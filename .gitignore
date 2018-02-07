@@ -12,3 +12,5 @@ lag_log.csv
 site/*
 build
 .idea
+second_model
+d2/models/*
