@@ -28,7 +28,7 @@ tolerance   = cfg.RC_TOLERANCE
 ser = serial.Serial(dev,57600)
 print("Initialized Serial")
 
-# convert this scripts hz to a decimal sleep value
+# convert this script's hZ to a decimal sleep value
 sleep_time = 1000/float(Hz)/1000.0
 
 

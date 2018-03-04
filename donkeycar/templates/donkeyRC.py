@@ -19,14 +19,16 @@ import donkeycar as dk
 # import parts
 from donkeycar.parts.camera import PiCamera
 from donkeycar.parts.transform import Lambda
-from donkeycar.parts.keras import KerasCategorical
+from donkeycar.parts.keras import KerasCategorical, KerasIMU
 from donkeycar.parts.actuator import PCA9685, PWMSteering, PWMThrottle
+from donkeycar.parts.imu import Mpu6050
 from donkeycar.parts.datastore import TubHandler, TubGroup
 from donkeycar.parts.controller import LocalWebController, JoystickController
 from donkeycar.parts.RCcontroller import RC_Controller
 
+from pprint import pprint
 
-def drive(cfg, model_path=None, use_joystick=False, use_rcControl=False):
+def drive(cfg, model_path=None, use_joystick=False, use_rcControl=False,model_type=None):
     '''
     Construct a working robotic vehicle from many parts.
     Each part runs as a job in the Vehicle loop, calling either
@@ -37,17 +39,33 @@ def drive(cfg, model_path=None, use_joystick=False, use_rcControl=False):
     to parts requesting the same named input.
     '''
 
-    # Initialize car
+    if model_type is None:
+        # this is the default model used for training based only on image and throttle/steering
+        model_type = "categorical"
+
+    # Initialize car object
     V = dk.vehicle.Vehicle()
+
+    # start adding parts. Order matters, in output of a part is needed for a subsequent part, it should be
+    # ordered first. For example, if you need the camera image for your part, then that part should come
+    # after the camera part has been added.
     cam = PiCamera(resolution=cfg.CAMERA_RESOLUTION)
     V.add(cam, outputs=['cam/image_array'], threaded=True)
 
     if use_joystick or cfg.USE_JOYSTICK_AS_DEFAULT:
         # modify max_throttle closer to 1.0 to have more power
         # modify steering_scale lower than 1.0 to have less responsive steering
-        ctr = JoystickController(max_throttle=cfg.JOYSTICK_MAX_THROTTLE,
+        ctr = JoystickController(throttle_scale=cfg.JOYSTICK_MAX_THROTTLE,
                                  steering_scale=cfg.JOYSTICK_STEERING_SCALE,
-                                 auto_record_on_throttle=cfg.AUTO_RECORD_ON_THROTTLE)
+                                 auto_record_on_throttle=cfg.AUTO_RECORD_ON_THROTTLE,
+                                 controller_type=cfg.CONTROLLER_TYPE)
+
+        if cfg.USE_NETWORKED_JS:
+            from donkeycar.parts.controller import JoyStickSub
+            netwkJs = JoyStickSub(cfg.NETWORK_JS_SERVER_IP)
+            V.add(netwkJs, threaded=True)
+            ctr.js = netwkJs
+
         V.add(ctr,
               inputs=['cam/image_array'],
               outputs=['user/angle', 'user/throttle', 'user/mode', 'recording'],
@@ -62,12 +80,12 @@ def drive(cfg, model_path=None, use_joystick=False, use_rcControl=False):
                            steering_scale=cfg.RC_STEERING_SCALE,
                            auto_record_on_throttle=cfg.AUTO_RECORD_ON_THROTTLE)
 
+        # the RC_Controller takes no inputs from other parts. It uses a serial connection to the
+        # microcontroller (Teensy) to receive inputs directly from the MCU.
         V.add(rc,
-              inputs=['cam/image_array'],
-              # outputs angle and throttle, but mode1 and recording1 go into the void.
-              # the RC part has to be set to 'recording' in order for record_on_throttle
-              # to work.
-              outputs=['user/angle', 'user/throttle', 'user/mode1', 'recording'],
+              # outputs angle and throttle, user/mode is controlled by web interface.
+              # the RC part has to be set to 'recording' in order for record_on_throttle to work.
+              outputs=['user/angle', 'user/throttle', 'recording'],
               threaded=True)
 
         '''
@@ -85,7 +103,9 @@ def drive(cfg, model_path=None, use_joystick=False, use_rcControl=False):
               inputs=['cam/image_array'],
               # the output for angle and throttle go into the void, but
               # recording has to be set to 'recording1' so that it doesn't override
-              # the RC controller.
+              # the RC controller. angle1, throttle1 and recording1 are unused, but must be specificed
+              # as the LocalWebController returns 4 values. could probably also use 'null/angle', etc
+              # for clarity if need be.
               outputs=['user/angle1', 'user/throttle1', 'user/mode', 'recording1'],
               threaded=True)
 
@@ -111,16 +131,38 @@ def drive(cfg, model_path=None, use_joystick=False, use_rcControl=False):
     pilot_condition_part = Lambda(pilot_condition)
     V.add(pilot_condition_part, inputs=['user/mode'], outputs=['run_pilot'])
 
+    #IMU
+    if cfg.HAVE_IMU:
+        # 6-axis IMU
+        imu = Mpu6050()
+        V.add(imu, outputs=['imu/acl_x', 'imu/acl_y',
+                            'imu/acl_z','imu/gyr_x',
+                            'imu/gyr_y', 'imu/gyr_z'], threaded=True)
+
+    # now we're going to get ready to setup of the DNN based on wether we have an IMU or not.
+    if model_type == "imu":
+        assert (cfg.HAVE_IMU)
+        # Run the pilot if the mode is not user.
+        inputs = ['cam/image_array',
+                  'imu/acl_x', 'imu/acl_y', 'imu/acl_z',
+                  'imu/gyr_x', 'imu/gyr_y', 'imu/gyr_z']
+    else:
+        inputs = ['cam/image_array']
+
     # Run the pilot if the mode is not user.
-    kl = KerasCategorical()
     if model_path:
+        kl = dk.utils.get_model_by_type(model_type, cfg)
         kl.load(model_path)
 
-    V.add(kl, inputs=['cam/image_array'],
-          outputs=['pilot/angle', 'pilot/throttle'],
-          run_condition='run_pilot')
+        # run_condition acts as a flag the causes the part to only run if the condition is true.
+        # in this case 'run_pilot' must be true. (Set by the Lamda 'pilot_condition' part above.)
+        V.add(kl,   inputs=['cam/image_array'],
+                    outputs=['pilot/angle', 'pilot/throttle'],
+                    run_condition='run_pilot')
 
     # Choose what inputs should change the car.
+    # when user_mode switches between 'user' (human for both), 'local_angle' (angle from Keras model, throttle from human)
+    #  or 'local_pilot' (throttle & angle both from Keras model)
     def drive_mode(mode,
                    user_angle, user_throttle,
                    pilot_angle, pilot_throttle):

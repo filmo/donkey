@@ -209,7 +209,7 @@ class RC_Controller(object):
     '''
 
     def __init__(self, cfg,
-                 poll_delay=0.04, # slightly faster than the frame refresh. Arduino should be at even higher hz. (I use 40hz on arduino)
+                 poll_delay=0.04, # slightly faster than the frame refresh. Arduino should be at even higher hz. (I use 40hz on arduino)'
                  max_throttle=1.0,
                  steering_scale= -1.0, # on my RC transmitter I needed to flip to -1 this to match manual steering.
                  throttle_scale=1.0,
