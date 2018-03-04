@@ -2,14 +2,15 @@
 Scripts to drive a donkey 2 car and train a model for it.
 
 Usage:
-    manage.py (drive) [--model=<model>] [--js] [--rc]
-    manage.py (train) [--tub=<tub1,tub2,..tubn>]  (--model=<model>) [--no_cache]
+    manage.py (drive) [--model=<model>] [--js] [--rc] [--type=(linear|categorical|rnn|imu|behavior|3d)]
+    manage.py (train) [--tub=<tub1,tub2,..tubn>]  (--model=<model>) [--no_cache] [--type=(linear|categorical|rnn|imu|behavior|3d)]
 
 Options:
     -h --help        Show this screen.
     --tub TUBPATHS   List of paths to tubs. Comma separated. Use quotes to use wildcards. ie "~/tubs/*"
     --js             Use physical joystick.
     --rc             Use RC controller
+    --type           What type of Keras model to use. (default is categorical which uses binning)
 """
 import os
 from docopt import docopt
@@ -156,7 +157,7 @@ def drive(cfg, model_path=None, use_joystick=False, use_rcControl=False,model_ty
 
         # run_condition acts as a flag the causes the part to only run if the condition is true.
         # in this case 'run_pilot' must be true. (Set by the Lamda 'pilot_condition' part above.)
-        V.add(kl,   inputs=['cam/image_array'],
+        V.add(kl,   inputs=inputs,
                     outputs=['pilot/angle', 'pilot/throttle'],
                     run_condition='run_pilot')
 
@@ -198,6 +199,14 @@ def drive(cfg, model_path=None, use_joystick=False, use_rcControl=False,model_ty
     # add tub to save data
     inputs = ['cam/image_array', 'user/angle', 'user/throttle', 'user/mode']
     types = ['image_array', 'float', 'float', 'str']
+
+    if cfg.HAVE_IMU:
+        # if we're collecting data from the IMU, then save it into the tub as well
+        inputs += ['imu/acl_x', 'imu/acl_y', 'imu/acl_z',
+            'imu/gyr_x', 'imu/gyr_y', 'imu/gyr_z']
+
+        types +=['float', 'float', 'float',
+           'float', 'float', 'float']
 
     th = TubHandler(path=cfg.DATA_PATH)
     tub = th.new_tub_writer(inputs=inputs, types=types)
@@ -254,13 +263,21 @@ if __name__ == '__main__':
     if args['drive']:
         drive(cfg, model_path=args['--model'], use_joystick=args['--js'], use_rcControl=args['--rc'])
 
-    elif args['train']:
+    if args['train']:
+        from train import multi_train
+
         tub = args['--tub']
+
         model = args['--model']
-        cache = not args['--no_cache']
-        train(cfg, tub, model)
 
+        transfer = args['--transfer']
 
+        model_type = args['--type']
 
+        continuous = args['--continuous']
+
+        aug = args['--aug']
+
+        multi_train(cfg, tub, model, transfer, model_type, continuous, aug)
 
 

@@ -19,7 +19,7 @@ import donkeycar as dk
 # import parts
 from donkeycar.parts.camera import PiCamera
 from donkeycar.parts.transform import Lambda
-from donkeycar.parts.keras import KerasCategorical
+from donkeycar.parts.keras import KerasCategorical, KerasIMU
 from donkeycar.parts.actuator import PCA9685, PWMSteering, PWMThrottle
 from donkeycar.parts.datastore import TubHandler, TubGroup
 from donkeycar.parts.controller import LocalWebController, JoystickController
@@ -39,15 +39,25 @@ def drive(cfg, model_path=None, use_joystick=False, use_rcControl=False):
 
     # Initialize car
     V = dk.vehicle.Vehicle()
+
+    # add the camera as the first part. Its image is used for subsequent parts and relies upon no other inputs.
     cam = PiCamera(resolution=cfg.CAMERA_RESOLUTION)
     V.add(cam, outputs=['cam/image_array'], threaded=True)
 
     if use_joystick or cfg.USE_JOYSTICK_AS_DEFAULT:
         # modify max_throttle closer to 1.0 to have more power
         # modify steering_scale lower than 1.0 to have less responsive steering
-        ctr = JoystickController(max_throttle=cfg.JOYSTICK_MAX_THROTTLE,
+        ctr = JoystickController(throttle_scale=cfg.JOYSTICK_MAX_THROTTLE,
                                  steering_scale=cfg.JOYSTICK_STEERING_SCALE,
-                                 auto_record_on_throttle=cfg.AUTO_RECORD_ON_THROTTLE)
+                                 auto_record_on_throttle=cfg.AUTO_RECORD_ON_THROTTLE,
+                                 controller_type=cfg.CONTROLLER_TYPE)
+
+        if cfg.USE_NETWORKED_JS:
+            from donkeycar.parts.controller import JoyStickSub
+            netwkJs = JoyStickSub(cfg.NETWORK_JS_SERVER_IP)
+            V.add(netwkJs, threaded=True)
+            ctr.js = netwkJs
+
         V.add(ctr,
               inputs=['cam/image_array'],
               outputs=['user/angle', 'user/throttle', 'user/mode', 'recording'],
@@ -63,7 +73,6 @@ def drive(cfg, model_path=None, use_joystick=False, use_rcControl=False):
                            auto_record_on_throttle=cfg.AUTO_RECORD_ON_THROTTLE)
 
         V.add(rc,
-              inputs=['cam/image_array'],
               # outputs angle and throttle, but mode1 and recording1 go into the void.
               outputs=['user/angle', 'user/throttle', 'user/mode1', 'recording1'],
               threaded=True)
@@ -109,7 +118,8 @@ def drive(cfg, model_path=None, use_joystick=False, use_rcControl=False):
     V.add(pilot_condition_part, inputs=['user/mode'], outputs=['run_pilot'])
 
     # Run the pilot if the mode is not user.
-    kl = KerasCategorical()
+#    kl = KerasCategorical()
+    kl = KerasIMU()
     if model_path:
         kl.load(model_path)
 
