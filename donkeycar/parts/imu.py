@@ -14,7 +14,7 @@ class Mpu6050:
     pip install mpu6050-raspberrypi
     '''
 
-    def __init__(self, addr=0x68, poll_delay=0.0166):
+    def __init__(self, addr=0x68, poll_delay=0.0166,show_debug=False):
         from mpu6050 import mpu6050
         self.sensor = mpu6050(addr)
         self.accel = { 'x' : 0., 'y' : 0., 'z' : 0. }
@@ -22,7 +22,11 @@ class Mpu6050:
         self.temp = 0.
         self.poll_delay = poll_delay
         self.on = True
-        self.debug = False
+        self.debug = show_debug
+
+    def calibrate(self):
+        self.sensor.zero_mean_calibration()
+        self.sensor.set_calibrated_flag()
 
     def update(self):
         while self.on:
