@@ -2,7 +2,7 @@
 Scripts to drive a donkey 2 car and train a model for it.
 
 Usage:
-    manage.py (drive) [--model=<model>] [--js] [--rc] [--type=(linear|categorical|rnn|imu|behavior|3d)]
+    manage.py (drive) [--model=<model>] [--js]  [--rc] [--type=(linear|categorical|rnn|imu|behavior|3d)] [--camera=(single|stereo)]
     manage.py (train) [--tub=<tub1,tub2,..tubn>]  (--model=<model>) [--no_cache] [--type=(linear|categorical|rnn|imu|behavior|3d)]
 
 Options:
@@ -10,7 +10,7 @@ Options:
     --tub TUBPATHS   List of paths to tubs. Comma separated. Use quotes to use wildcards. ie "~/tubs/*"
     --js             Use physical joystick.
     --rc             Use RC controller
-    --type           What type of Keras model to use. (default is categorical which uses binning)
+    --type MODEL     Set up inputs based on type of model you are running
 """
 import os
 from docopt import docopt
@@ -20,7 +20,8 @@ import donkeycar as dk
 # import parts
 from donkeycar.parts.camera import PiCamera
 from donkeycar.parts.transform import Lambda
-from donkeycar.parts.keras import KerasCategorical, KerasIMU
+# moved to 'utils' for lazy loading.
+#from donkeycar.parts.keras import KerasCategorical, KerasIMU
 from donkeycar.parts.actuator import PCA9685, PWMSteering, PWMThrottle
 from donkeycar.parts.imu import Mpu6050
 from donkeycar.parts.datastore import TubHandler, TubGroup
@@ -79,7 +80,8 @@ def drive(cfg, model_path=None, use_joystick=False, use_rcControl=False,model_ty
         rc = RC_Controller(cfg=cfg,
                            max_throttle=cfg.RC_MAX_THROTTLE,
                            steering_scale=cfg.RC_STEERING_SCALE,
-                           auto_record_on_throttle=cfg.AUTO_RECORD_ON_THROTTLE)
+                           auto_record_on_throttle=cfg.AUTO_RECORD_ON_THROTTLE,
+                           show_cmd=True)
 
         # the RC_Controller takes no inputs from other parts. It uses a serial connection to the
         # microcontroller (Teensy) to receive inputs directly from the MCU.
@@ -134,6 +136,7 @@ def drive(cfg, model_path=None, use_joystick=False, use_rcControl=False,model_ty
 
     #IMU
     if cfg.HAVE_IMU:
+        print('IMU present')
         # 6-axis IMU
         imu = Mpu6050()
         V.add(imu, outputs=['imu/acl_x', 'imu/acl_y',
@@ -152,6 +155,8 @@ def drive(cfg, model_path=None, use_joystick=False, use_rcControl=False,model_ty
 
     # Run the pilot if the mode is not user.
     if model_path:
+        # TF and Keras will lazy load if a model is passed in. Otherwise, there's no need to fire
+        # up TF just to collect training data.
         kl = dk.utils.get_model_by_type(model_type, cfg)
         kl.load(model_path)
 
@@ -205,8 +210,7 @@ def drive(cfg, model_path=None, use_joystick=False, use_rcControl=False,model_ty
         inputs += ['imu/acl_x', 'imu/acl_y', 'imu/acl_z',
             'imu/gyr_x', 'imu/gyr_y', 'imu/gyr_z']
 
-        types +=['float', 'float', 'float',
-           'float', 'float', 'float']
+        types +=['float', 'float', 'float', 'float', 'float', 'float']
 
     th = TubHandler(path=cfg.DATA_PATH)
     tub = th.new_tub_writer(inputs=inputs, types=types)
@@ -219,65 +223,21 @@ def drive(cfg, model_path=None, use_joystick=False, use_rcControl=False,model_ty
     print("You can now go to <your pi ip address>:8887 to drive your car.")
 
 
-def train(cfg, tub_names, model_name):
-    '''
-    use the specified data in tub_names to train an artifical neural network
-    saves the output trained model as model_name
-    '''
-    X_keys = ['cam/image_array']
-    y_keys = ['user/angle', 'user/throttle']
-
-    def rt(record):
-        record['user/angle'] = dk.utils.linear_bin(record['user/angle'])
-        return record
-
-    kl = KerasCategorical()
-    print('tub_names', tub_names)
-    if not tub_names:
-        tub_names = os.path.join(cfg.DATA_PATH, '*')
-    tubgroup = TubGroup(tub_names)
-    train_gen, val_gen = tubgroup.get_train_val_gen(X_keys, y_keys, record_transform=rt,
-                                                    batch_size=cfg.BATCH_SIZE,
-                                                    train_frac=cfg.TRAIN_TEST_SPLIT)
-
-    model_path = os.path.expanduser(model_name)
-
-    total_records = len(tubgroup.df)
-    total_train = int(total_records * cfg.TRAIN_TEST_SPLIT)
-    total_val = total_records - total_train
-    print('train: %d, validation: %d' % (total_train, total_val))
-    steps_per_epoch = total_train // cfg.BATCH_SIZE
-    print('steps_per_epoch', steps_per_epoch)
-
-    kl.train(train_gen,
-             val_gen,
-             saved_model_path=model_path,
-             steps=steps_per_epoch,
-             train_split=cfg.TRAIN_TEST_SPLIT)
-
-
 if __name__ == '__main__':
     args = docopt(__doc__)
     cfg = dk.load_config()
+    model_type = args['--type']
 
     if args['drive']:
-        drive(cfg, model_path=args['--model'], use_joystick=args['--js'], use_rcControl=args['--rc'])
+        drive(cfg, model_path=args['--model'], use_joystick=args['--js'], use_rcControl=args['--rc'],model_type=model_type)
 
     if args['train']:
-        from train import multi_train
-
+        from donkeycar.train import multi_train
         tub = args['--tub']
-
         model = args['--model']
-
         transfer = args['--transfer']
-
         model_type = args['--type']
-
         continuous = args['--continuous']
-
         aug = args['--aug']
 
         multi_train(cfg, tub, model, transfer, model_type, continuous, aug)
-
-
