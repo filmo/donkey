@@ -263,10 +263,14 @@ class RC_Controller(object):
                     print("--> Stopping soon: ", self.delay_stop_count)
                 return self.recording
 
+            # reset delay counter
+            if throttle_state:
+                self.delay_stop_count = 0
+
             if self.show_commands:
                 print("RC Controller: recording = ",throttle_state)
 
-            self.recording = (abs(self.throttle) > self.record_minimum and self.mode == 'user')
+            self.recording = throttle_state
 
     def init_rc(self):
         '''
