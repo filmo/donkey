@@ -81,14 +81,14 @@ def drive(cfg, model_path=None, use_joystick=False, use_rcControl=False,model_ty
                            max_throttle=cfg.RC_MAX_THROTTLE,
                            steering_scale=cfg.RC_STEERING_SCALE,
                            auto_record_on_throttle=cfg.AUTO_RECORD_ON_THROTTLE,
-                           show_cmd=True)
+                           show_cmd=False)
 
         # the RC_Controller takes no inputs from other parts. It uses a serial connection to the
         # microcontroller (Teensy) to receive inputs directly from the MCU.
         V.add(rc,
               # outputs angle and throttle, user/mode is controlled by web interface.
               # the RC part has to be set to 'recording' in order for record_on_throttle to work.
-              outputs=['user/angle', 'user/throttle', 'recording'],
+              outputs=['user/angle', 'user/throttle', 'void/mode', 'recording'],
               threaded=True)
 
         '''
@@ -138,7 +138,9 @@ def drive(cfg, model_path=None, use_joystick=False, use_rcControl=False,model_ty
     if cfg.HAVE_IMU:
         print('IMU present')
         # 6-axis IMU
-        imu = Mpu6050()
+        imu = Mpu6050(show_debug=True)
+        # run self calibration to zero out the gyro and accelerometer. The Gyro needs it more than the accel does.
+        imu.calibrate()
         V.add(imu, outputs=['imu/acl_x', 'imu/acl_y',
                             'imu/acl_z','imu/gyr_x',
                             'imu/gyr_y', 'imu/gyr_z'], threaded=True)

@@ -23,10 +23,26 @@ class Mpu6050:
         self.poll_delay = poll_delay
         self.on = True
         self.debug = show_debug
+        self.threshold_zero = False
+        self.accel_thres = 0.30
+        self.gyro_thres  = 0.10
 
     def calibrate(self):
         self.sensor.zero_mean_calibration()
         self.sensor.set_calibrated_flag()
+
+    def threshold_clamp(self):
+        if abs(self.accel['x']) <= self.accel_thres:
+            self.accel['x'] = 0.0
+        if abs(self.accel['y']) <= self.accel_thres:
+            self.accel['y'] = 0.0
+        if abs(self.gyro['x']) <= self.gyro_thres:
+            self.gyro['x'] = 0.0
+        if abs(self.gyro['y']) <= self.gyro_thres:
+            self.gyro['y'] = 0.0
+        if abs(self.gyro['z']) <= self.gyro_thres:
+            self.gyro['z'] = 0.0
+
 
     def update(self):
         while self.on:
@@ -40,6 +56,10 @@ class Mpu6050:
         if self.debug:
             print("x = %0.3f, y = %0.3f, gx = %0.3f, gy = %0.3f, gz=%0.3f" %
                   (self.accel['x'], self.accel['y'], self.gyro['x'], self.gyro['y'], self.gyro['z']))
+
+        if self.threshold_zero:
+            self.threshold_clamp()
+
         return self.accel['x'], self.accel['y'], self.accel['z'], self.gyro['x'], self.gyro['y'], self.gyro['z'], self.temp
 
     def run(self):

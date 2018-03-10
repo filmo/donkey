@@ -230,6 +230,8 @@ class RC_Controller(object):
         self.record_minimum = 0.20
         self.constant_throttle = False
         self.auto_record_on_throttle = auto_record_on_throttle
+        self.delay_stop = 5
+        self.delay_stop_count = 0
         self.dev_fn = dev_fn
         self.rc_controller = None
         self.show_commands = show_cmd
@@ -251,9 +253,18 @@ class RC_Controller(object):
             # TODO: Limitation of using throttle as a proxy for velocity rather than odometry.
             # self.recording = (abs(self.throttle) < self.record_minimum and self.mode == 'user')
 
+            throttle_state = (abs(self.throttle) > self.record_minimum and self.mode == 'user')
+
+            # wait 5 frames to turn off recording to account for inertia. There are plenty of times
+            # where the throttle is '0' but we're actually still driving.
+            if throttle_state == False and self.recording and self.delay_stop_count < self.delay_stop:
+                self.delay_stop_count += 1
+                if self.show_commands:
+                    print("--> Stopping soon: ", self.delay_stop_count)
+                return self.recording
+
             if self.show_commands:
-                print("RC Controller: recording = ",
-                     (abs(self.throttle) > self.record_minimum  and self.mode == 'user'))
+                print("RC Controller: recording = ",throttle_state)
 
             self.recording = (abs(self.throttle) > self.record_minimum and self.mode == 'user')
 
