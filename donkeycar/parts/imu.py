@@ -53,12 +53,13 @@ class Mpu6050:
         self.accel, self.gyro, self.temp = self.sensor.get_all_data()
 
     def run_threaded(self):
-        if self.debug:
-            print("x = %0.3f, y = %0.3f, gx = %0.3f, gy = %0.3f, gz=%0.3f" %
-                  (self.accel['x'], self.accel['y'], self.gyro['x'], self.gyro['y'], self.gyro['z']))
 
         if self.threshold_zero:
             self.threshold_clamp()
+
+        if self.debug:
+            print("x = %0.3f, y = %0.3f, gx = %0.3f, gy = %0.3f, gz=%0.3f" %
+                  (self.accel['x'], self.accel['y'], self.gyro['x'], self.gyro['y'], self.gyro['z']))
 
         return self.accel['x'], self.accel['y'], self.accel['z'], self.gyro['x'], self.gyro['y'], self.gyro['z'], self.temp
 
