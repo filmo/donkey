@@ -100,7 +100,6 @@ def make_next_key(sample, index_offset):
     index = sample['index'] + index_offset
     return tub_path + str(index)
 
-
 def collate_records(records, gen_records, opts):
 
     for record_path in records:
@@ -160,7 +159,6 @@ def collate_records(records, gen_records, opts):
 
         gen_records[key] = sample
 
-
 class MyCPCallback(keras.callbacks.ModelCheckpoint):
     '''
     custom callback to interact with best val loss during continuous training
@@ -196,7 +194,6 @@ class MyCPCallback(keras.callbacks.ModelCheckpoint):
         if self.reset_best_end_of_epoch:
             self.reset_best_end_of_epoch = False
             self.best = np.Inf
-        
 
 def send_model_to_pi(model_filename):
     #print('sending model to the pi')
@@ -442,7 +439,6 @@ def train(cfg, tub_names, model_name, transfer_model, model_type, continuous, au
         except:
             print("problems with loss graph")
 
-
 def sequence_train(cfg, tub_names, model_name, transfer_model, model_type, continuous):
     '''
     use the specified data in tub_names to train an artifical neural network
@@ -597,8 +593,6 @@ def sequence_train(cfg, tub_names, model_name, transfer_model, model_type, conti
         steps=steps_per_epoch,
         train_split=cfg.TRAIN_TEST_SPLIT,
         use_early_stop = cfg.USE_EARLY_STOP)
-
-
 
 def multi_train(cfg, tub, model, transfer, model_type, continuous, aug):
     '''

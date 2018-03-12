@@ -224,7 +224,6 @@ def drive(cfg, model_path=None, use_joystick=False, use_rcControl=False,model_ty
 
     print("You can now go to <your pi ip address>:8887 to drive your car.")
 
-
 if __name__ == '__main__':
     args = docopt(__doc__)
     cfg = dk.load_config()

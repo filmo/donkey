@@ -81,7 +81,6 @@ class KerasPilot(object):
                         validation_steps=steps*(1.0 - train_split))
         return hist
 
-
 class KerasCategorical(KerasPilot):
     def __init__(self, input_shape=(120, 160, 3), *args, **kwargs):
         super(KerasCategorical, self).__init__(*args, **kwargs)
@@ -112,8 +111,6 @@ class KerasCategorical(KerasPilot):
         angle_unbinned = dk.utils.linear_unbin(angle_binned)
         return angle_unbinned, throttle
     
-    
-    
 class KerasLinear(KerasPilot):
     def __init__(self, num_outputs=2, input_shape=(120, 160, 3), *args, **kwargs):
         super(KerasLinear, self).__init__(*args, **kwargs)
@@ -130,8 +127,6 @@ class KerasLinear(KerasPilot):
         steering = outputs[0]
         throttle = outputs[1]
         return steering[0][0], throttle[0][0]
-
-
 
 class KerasIMU(KerasPilot):
     '''
@@ -166,8 +161,7 @@ class KerasIMU(KerasPilot):
         self.compile()
 
     def compile(self):
-        self.model.compile(optimizer=self.optimizer,
-                  loss='mse')
+        self.model.compile(optimizer=self.optimizer, loss='mse')
         
     def run(self, img_arr, accel_x, accel_y, accel_z, gyr_x, gyr_y, gyr_z):
         #TODO: would be nice to take a vector input array.
@@ -177,7 +171,6 @@ class KerasIMU(KerasPilot):
         steering = outputs[0]
         throttle = outputs[1]
         return steering[0][0], throttle[0][0]
-
 
 class KerasBehavioral(KerasPilot):
     '''
@@ -200,6 +193,72 @@ class KerasBehavioral(KerasPilot):
         steering = outputs[0]
         throttle = outputs[1]
         return steering[0][0], throttle[0][0]
+
+class KerasRNN_LSTM(KerasPilot):
+    def __init__(self, image_w=160, image_h=120, image_d=3, seq_length=3, num_outputs=2, *args, **kwargs):
+        super(KerasRNN_LSTM, self).__init__(*args, **kwargs)
+        image_shape = (image_h, image_w, image_d)
+        self.model = rnn_lstm(seq_length=seq_length,
+                              num_outputs=num_outputs,
+                              image_shape=image_shape)
+        self.seq_length = seq_length
+        self.image_d = image_d
+        self.image_w = image_w
+        self.image_h = image_h
+        self.img_seq = []
+        self.compile()
+        self.optimizer = "rmsprop"
+
+    def compile(self):
+        self.model.compile(optimizer=self.optimizer,
+                           loss='mse')
+
+    def run(self, img_arr):
+        if img_arr.shape[2] == 3 and self.image_d == 1:
+            img_arr = dk.utils.rgb2gray(img_arr)
+
+        while len(self.img_seq) < self.seq_length:
+            self.img_seq.append(img_arr)
+
+        self.img_seq = self.img_seq[1:]
+        self.img_seq.append(img_arr)
+
+        img_arr = np.array(self.img_seq).reshape(1, self.seq_length, self.image_h, self.image_w, self.image_d)
+        outputs = self.model.predict([img_arr])
+        steering = outputs[0][0]
+        throttle = outputs[0][1]
+        return steering, throttle
+
+class Keras3D_CNN(KerasPilot):
+    def __init__(self, image_w=160, image_h=120, image_d=3, seq_length=20, num_outputs=2, *args, **kwargs):
+        super(Keras3D_CNN, self).__init__(*args, **kwargs)
+        self.model = build_3d_cnn(w=image_w, h=image_h, d=image_d, s=seq_length, num_outputs=num_outputs)
+        self.seq_length = seq_length
+        self.image_d = image_d
+        self.image_w = image_w
+        self.image_h = image_h
+        self.img_seq = []
+        self.compile()
+
+    def compile(self):
+        self.model.compile(loss='mean_squared_error', optimizer=self.optimizer, metrics=['accuracy'])
+
+    def run(self, img_arr):
+
+        if img_arr.shape[2] == 3 and self.image_d == 1:
+            img_arr = dk.utils.rgb2gray(img_arr)
+
+        while len(self.img_seq) < self.seq_length:
+            self.img_seq.append(img_arr)
+
+        self.img_seq = self.img_seq[1:]
+        self.img_seq.append(img_arr)
+
+        img_arr = np.array(self.img_seq).reshape(1, self.seq_length, self.image_h, self.image_w, self.image_d)
+        outputs = self.model.predict([img_arr])
+        steering = outputs[0][0]
+        throttle = outputs[0][1]
+        return steering, throttle
 
 
 def default_categorical(input_shape=(120, 160, 3)):
@@ -244,7 +303,6 @@ def default_categorical(input_shape=(120, 160, 3)):
     model = Model(inputs=[img_in], outputs=[angle_out, throttle_out])
     return model
 
-
 def default_n_linear(num_outputs, input_shape):
     from keras.layers import Input, Dense
     from keras.models import Model
@@ -282,8 +340,6 @@ def default_n_linear(num_outputs, input_shape):
     model = Model(inputs=[img_in], outputs=outputs)
     
     return model
-
-
 
 def default_imu(num_outputs, num_imu_inputs, input_shape):
     '''
@@ -331,7 +387,6 @@ def default_imu(num_outputs, num_imu_inputs, input_shape):
     
     return model
 
-
 def default_bhv(num_outputs, num_bvh_inputs, input_shape):
     '''
     Notes: this model depends on concatenate which failed on keras < 2.0.8
@@ -378,42 +433,6 @@ def default_bhv(num_outputs, num_bvh_inputs, input_shape):
     
     return model
 
-class KerasRNN_LSTM(KerasPilot):
-    def __init__(self, image_w =160, image_h=120, image_d=3, seq_length=3, num_outputs=2, *args, **kwargs):
-        super(KerasRNN_LSTM, self).__init__(*args, **kwargs)
-        image_shape = (image_h, image_w, image_d)
-        self.model = rnn_lstm(seq_length=seq_length,
-            num_outputs=num_outputs,
-            image_shape=image_shape)
-        self.seq_length = seq_length
-        self.image_d = image_d
-        self.image_w = image_w
-        self.image_h = image_h
-        self.img_seq = []
-        self.compile()
-        self.optimizer = "rmsprop"
-
-    def compile(self):
-        self.model.compile(optimizer=self.optimizer,
-                  loss='mse')
-
-    def run(self, img_arr):
-        if img_arr.shape[2] == 3 and self.image_d == 1:
-            img_arr = dk.utils.rgb2gray(img_arr)
-
-        while len(self.img_seq) < self.seq_length:
-            self.img_seq.append(img_arr)
-
-        self.img_seq = self.img_seq[1:]
-        self.img_seq.append(img_arr)
-        
-        img_arr = np.array(self.img_seq).reshape(1, self.seq_length, self.image_h, self.image_w, self.image_d )
-        outputs = self.model.predict([img_arr])
-        steering = outputs[0][0]
-        throttle = outputs[0][1]
-        return steering, throttle
-  
-
 def rnn_lstm(seq_length=3, num_outputs=2, image_shape=(120,160,3)):
 
     from keras.layers import Input, Dense
@@ -448,39 +467,6 @@ def rnn_lstm(seq_length=3, num_outputs=2, image_shape=(120,160,3)):
     x.add(Dense(num_outputs, activation='linear', name='model_outputs'))
     
     return x
-
-
-class Keras3D_CNN(KerasPilot):
-    def __init__(self, image_w =160, image_h=120, image_d=3, seq_length=20, num_outputs=2, *args, **kwargs):
-        super(Keras3D_CNN, self).__init__(*args, **kwargs)
-        self.model = build_3d_cnn(w=image_w, h=image_h, d=image_d, s=seq_length, num_outputs=num_outputs)
-        self.seq_length = seq_length
-        self.image_d = image_d
-        self.image_w = image_w
-        self.image_h = image_h
-        self.img_seq = []
-        self.compile()
-
-    def compile(self):
-        self.model.compile(loss='mean_squared_error', optimizer=self.optimizer, metrics=['accuracy'])
-
-    def run(self, img_arr):
-
-        if img_arr.shape[2] == 3 and self.image_d == 1:
-            img_arr = dk.utils.rgb2gray(img_arr)
-
-        while len(self.img_seq) < self.seq_length:
-            self.img_seq.append(img_arr)
-
-        self.img_seq = self.img_seq[1:]
-        self.img_seq.append(img_arr)
-        
-        img_arr = np.array(self.img_seq).reshape(1, self.seq_length, self.image_h, self.image_w, self.image_d )
-        outputs = self.model.predict([img_arr])
-        steering = outputs[0][0]
-        throttle = outputs[0][1]
-        return steering, throttle
-
 
 def build_3d_cnn(w, h, d, s, num_outputs):
     from keras.layers import Dense

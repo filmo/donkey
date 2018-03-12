@@ -39,9 +39,25 @@ THROTTLE_FORWARD_PWM = 400
 THROTTLE_STOPPED_PWM = 360
 THROTTLE_REVERSE_PWM = 310
 
+
 #TRAINING
 BATCH_SIZE = 128
 TRAIN_TEST_SPLIT = 0.8
+MAX_EPOCHS = 100
+SHOW_PLOT = True
+VEBOSE_TRAIN = True
+USE_EARLY_STOP = True
+EARLY_STOP_PATIENCE = 5
+MIN_DELTA = .0005
+PRINT_MODEL_SUMMARY = True      #print layers and weights to stdout
+OPTIMIZER = 'adam'               #adam, sgd, rmsprop, etc.. None accepts default
+LEARNING_RATE = 0.001           #only used when OPTIMIZER specified
+LEARNING_RATE_DECAY = 0.0       #only used when OPTIMIZER specified
+
+#model transfer options
+FREEZE_LAYERS = False
+NUM_LAST_LAYERS_TO_TRAIN = 7
+
 
 
 #JOYSTICK
