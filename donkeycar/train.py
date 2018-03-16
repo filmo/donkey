@@ -28,11 +28,12 @@ import keras
 import donkeycar as dk
 from donkeycar.parts.keras import KerasIMU,\
      KerasCategorical, KerasBehavioral, Keras3D_CNN,\
-     KerasRNN_LSTM
+     KerasRNN_LSTM, KerasIMUCategorical
 from donkeycar.parts.augment import augment_image
 from donkeycar.utils import *
 
 from sklearn.utils import shuffle
+from pprint import pprint
 
 '''
 matplotlib can be a pain to setup. So handle the case where it is absent. When present,
@@ -101,13 +102,21 @@ def make_next_key(sample, index_offset):
     return tub_path + str(index)
 
 def collate_records(records, gen_records, opts):
-
+    '''
+    Passes in gen_records which is modified by reference. (not a deep copy). As a 
+    result, it is not retunred
+    :param records: 
+    :param gen_records: 
+    :param opts: 
+    :return: 
+    '''
+    count = 0
     for record_path in records:
-
-        basepath = os.path.dirname(record_path)        
+        basepath = os.path.dirname(record_path)
         index = get_record_index(record_path)
         sample = { 'tub_path' : basepath, "index" : index }
-             
+
+        # print ('sample:',sample)
         key = make_key(sample)
 
         if key in gen_records:
@@ -126,14 +135,24 @@ def collate_records(records, gen_records, opts):
         angle = float(json_data['user/angle'])
         throttle = float(json_data["user/throttle"])
 
+        # print ('before binning: angle',angle,'throttle',throttle)
+
         if opts['categorical']:
-            angle = dk.utils.linear_bin(angle)
-            throttle = dk.utils.linear_bin(throttle, N=20, offset=0, R=0.5)
+            # this converts the real valued angle and throttle into a binned
+            # one-hot vector of approximate ranges.
+
+            # added defaults for angle here for clarity.
+            angle    = dk.utils.linear_bin(angle,    N=15, offset=1.0, R=2.0)
+            throttle = dk.utils.linear_bin(throttle, N=20, offset=0.0, R=1.0)
 
         sample['angle'] = angle
         sample['throttle'] = throttle
-
+        # print (sample['angle'],"\n",sample['throttle'])
+        # count+= 1
+        # if count > 50:
+        #     exit()
         try:
+            # see if an IMU was used during recording of traning data
             accl_x = float(json_data['imu/acl_x'])
             accl_y = float(json_data['imu/acl_y'])
             accl_z = float(json_data['imu/acl_z'])
@@ -219,16 +238,17 @@ def train(cfg, tub_names, model_name, transfer_model, model_type, continuous, au
 
     opts['categorical'] = False
 
+    # model is initialized with 'adam' optimizer which can be overridden below.
     kl = get_model_by_type(model_type, cfg=cfg)
 
-    opts['categorical'] = type(kl) is KerasCategorical
+    opts['categorical'] = type(kl) is KerasCategorical or type(kl) is KerasIMUCategorical
 
     print('training with model type', type(kl))
 
     if transfer_model:
-        print('loading weights from model', transfer_model)
+        print('\n--- loading weights from model', transfer_model)
         kl.load(transfer_model)
-
+        print('\n')
         #when transfering models, should we freeze all but the last N layers?
         if cfg.FREEZE_LAYERS:
             num_to_freeze = len(kl.model.layers) - cfg.NUM_LAST_LAYERS_TO_TRAIN 
@@ -237,19 +257,26 @@ def train(cfg, tub_names, model_name, transfer_model, model_type, continuous, au
                 kl.model.layers[i].trainable = False        
 
     if cfg.OPTIMIZER:
+        print('Setting optimizer to:',cfg.OPTIMIZER)
         kl.set_optimizer(cfg.OPTIMIZER, cfg.LEARNING_RATE, cfg.LEARNING_RATE_DECAY)
 
     kl.compile()
 
     if cfg.PRINT_MODEL_SUMMARY:
         print(kl.model.summary())
-    
+
     opts['keras_pilot'] = kl
     opts['continuous'] = continuous
 
+    # records is a python list of all the .json records in the tubs.
     records = gather_records(cfg, tub_names, opts)
+
     print('collating %d records ...' % (len(records)))
+    # gen_records is defined in this scope and passed by reference and modified
+    # directly inside 'collage_records'
+    # the keys of gen_record are a concat of tub_path + frame#
     collate_records(records, gen_records, opts)
+
 
     def generator(save_best, opts, data, batch_size, isTrainSet=True):
         
@@ -284,12 +311,14 @@ def train(cfg, tub_names, model_name, transfer_model, model_type, continuous, au
             else:
                 model_out_shape = kl.model.output.shape
 
+            ''' 2018-03-11 -- appears to be dead code.
             if type(kl.model.input) is list:
                 model_in_shape = (2, 1)
             else:    
                 model_in_shape = kl.model.input.shape
+            '''
 
-            has_imu = type(kl) is KerasIMU
+            has_imu = type(kl) is KerasIMU or type(kl) is KerasIMUCategorical
             has_bvh = type(kl) is KerasBehavioral
 
             for key in keys:
@@ -300,6 +329,7 @@ def train(cfg, tub_names, model_name, transfer_model, model_type, continuous, au
                 _record = data[key]
 
                 if _record['train'] != isTrainSet:
+                    # this splits the data into 'training' and validation
                     continue
 
                 batch_data.append(_record)
@@ -313,12 +343,16 @@ def train(cfg, tub_names, model_name, transfer_model, model_type, continuous, au
 
                     for record in batch_data:
                         #get image data if we don't already have it
-                        if record['img_data'] is None:
+
+                        # if '--aug' then permute the image each epoch as well.
+                        if record['img_data'] is None or aug:
+                        # if record['img_data'] is None:
                             filename = record['image_path']
                             
                             img_arr = load_scaled_image_arr(filename, cfg)
                             
                             if aug:
+                                # print('a',end='',flush=True)
                                 img_arr = augment_image(img_arr)
 
                             record['img_data'] = img_arr
@@ -371,7 +405,7 @@ def train(cfg, tub_names, model_name, transfer_model, model_type, continuous, au
                                                 mode='auto')
 
     train_gen = generator(save_best, opts, gen_records, cfg.BATCH_SIZE, True)
-    val_gen = generator(save_best, opts, gen_records, cfg.BATCH_SIZE, False)
+    val_gen   = generator(save_best, opts, gen_records, cfg.BATCH_SIZE, False)
  
 
     total_records = len(gen_records)
@@ -401,8 +435,12 @@ def train(cfg, tub_names, model_name, transfer_model, model_type, continuous, au
     else:
         epochs = cfg.MAX_EPOCHS
 
-    workers_count = 1
-    use_multiprocessing = False
+    if aug:
+        workers_count = 4
+        use_multiprocessing = True
+    else:
+        workers_count = 1
+        use_multiprocessing = False
 
     callbacks_list = [save_best]
 
@@ -439,7 +477,7 @@ def train(cfg, tub_names, model_name, transfer_model, model_type, continuous, au
         except:
             print("problems with loss graph")
 
-def sequence_train(cfg, tub_names, model_name, transfer_model, model_type, continuous):
+def sequence_train(cfg, tub_names, model_name, transfer_model, model_type, continuous, aug=False):
     '''
     use the specified data in tub_names to train an artifical neural network
     saves the output trained model as model_name
@@ -467,6 +505,20 @@ def sequence_train(cfg, tub_names, model_name, transfer_model, model_type, conti
             num_outputs=2)
     else:
         raise Exception("unknown model type: %s" % model_type)
+
+    if cfg.PRINT_MODEL_SUMMARY:
+        print(kl.model.summary())
+
+    if transfer_model:
+        print('\n--- loading weights from model', transfer_model)
+        kl.load(transfer_model)
+        print('\n')
+        #when transfering models, should we freeze all but the last N layers?
+        if cfg.FREEZE_LAYERS:
+            num_to_freeze = len(kl.model.layers) - cfg.NUM_LAST_LAYERS_TO_TRAIN
+            print('freezing %d layers' % num_to_freeze)
+            for i in range(num_to_freeze):
+                kl.model.layers[i].trainable = False
 
     tubs = gather_tubs(cfg, tub_names)
 
@@ -507,8 +559,6 @@ def sequence_train(cfg, tub_names, model_name, transfer_model, model_type, conti
 
         gen_records[key] = sample
 
-
-
     print('collating sequences')
 
     sequences = []
@@ -529,11 +579,8 @@ def sequence_train(cfg, tub_names, model_name, transfer_model, model_type, conti
 
         sequences.append(seq)
 
-
-
     #shuffle and split the data
     train_data, val_data  = train_test_split(sequences, shuffle=True, test_size=(1 - cfg.TRAIN_TEST_SPLIT))
-
 
     def generator(data, batch_size=cfg.BATCH_SIZE):
         num_records = len(data)
@@ -558,7 +605,11 @@ def sequence_train(cfg, tub_names, model_name, transfer_model, model_type, conti
                         #get image data if we don't already have it
                         if record['img_data'] is None:
                             img_arr = load_scaled_image_arr(record['image_path'], cfg)
-                            record['img_data'] = img_arr                            
+
+                            if aug:
+                                img_arr = augment_image(img_arr)
+
+                            record['img_data'] = img_arr
                             
                         inputs_img.append(record['img_data'])
                     labels.append(seq[-1]['target_output'])
@@ -575,7 +626,6 @@ def sequence_train(cfg, tub_names, model_name, transfer_model, model_type, conti
 
     train_gen = generator(train_data)
     val_gen = generator(val_data)
-    
 
     model_path = os.path.expanduser(model_name)
 
@@ -592,7 +642,8 @@ def sequence_train(cfg, tub_names, model_name, transfer_model, model_type, conti
         saved_model_path=model_path,
         steps=steps_per_epoch,
         train_split=cfg.TRAIN_TEST_SPLIT,
-        use_early_stop = cfg.USE_EARLY_STOP)
+        use_early_stop = cfg.USE_EARLY_STOP
+    )
 
 def multi_train(cfg, tub, model, transfer, model_type, continuous, aug):
     '''
@@ -614,4 +665,3 @@ if __name__ == "__main__":
     continuous = args['--continuous']
     aug = args['--aug']
     multi_train(cfg, tub, model, transfer, model_type, continuous, aug)
-    

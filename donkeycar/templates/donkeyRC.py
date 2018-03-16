@@ -3,7 +3,8 @@ Scripts to drive a donkey 2 car and train a model for it.
 
 Usage:
     manage.py (drive) [--model=<model>] [--js]  [--rc] [--type=(linear|categorical|rnn|imu|behavior|3d)] [--camera=(single|stereo)]
-    manage.py (train) [--tub=<tub1,tub2,..tubn>]  (--model=<model>) [--no_cache] [--type=(linear|categorical|rnn|imu|behavior|3d)]
+    manage.py (train) [--tub=<tub1,tub2,..tubn>]  (--model=<model>) [--no_cache] \
+		      [--type=(linear|categorical|rnn|imu|behavior|3d)] [--transfer=<tmodel>] [--continuous] [--aug]
 
 Options:
     -h --help        Show this screen.
@@ -159,7 +160,11 @@ def drive(cfg, model_path=None, use_joystick=False, use_rcControl=False,model_ty
     if model_path:
         # TF and Keras will lazy load if a model is passed in. Otherwise, there's no need to fire
         # up TF just to collect training data.
+
+        # the model is initialized to whatever is the current definition in Keras,
         kl = dk.utils.get_model_by_type(model_type, cfg)
+        # however, this load method will overwrite the .model by loading the one found at this
+        # path irrespective of whatever was defined above.
         kl.load(model_path)
 
         # run_condition acts as a flag the causes the part to only run if the condition is true.

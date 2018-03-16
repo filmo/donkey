@@ -26,6 +26,10 @@ MAX_LOOPS = 100000
 
 #CAMERA
 CAMERA_RESOLUTION = (120, 160) #(height, width)
+CAMERA_TYPE = "PICAM"   # (PICAM|WEBCAM|CVCAM)
+IMAGE_W = 160
+IMAGE_H = 120
+IMAGE_DEPTH = 3         # default RGB=3, make 1 for mono
 CAMERA_FRAMERATE = DRIVE_LOOP_HZ
 
 #STEERING
@@ -50,7 +54,7 @@ USE_EARLY_STOP = True
 EARLY_STOP_PATIENCE = 5
 MIN_DELTA = .0005
 PRINT_MODEL_SUMMARY = True      #print layers and weights to stdout
-OPTIMIZER = 'adam'               #adam, sgd, rmsprop, etc.. None accepts default
+OPTIMIZER = None                #adam, sgd, rmsprop, etc.. None accepts default
 LEARNING_RATE = 0.001           #only used when OPTIMIZER specified
 LEARNING_RATE_DECAY = 0.0       #only used when OPTIMIZER specified
 
@@ -58,7 +62,8 @@ LEARNING_RATE_DECAY = 0.0       #only used when OPTIMIZER specified
 FREEZE_LAYERS = False
 NUM_LAST_LAYERS_TO_TRAIN = 7
 
-
+#RNN or 3D
+SEQUENCE_LENGTH = 3
 
 #JOYSTICK
 USE_JOYSTICK_AS_DEFAULT = False

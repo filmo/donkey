@@ -364,7 +364,8 @@ def gather_records(cfg, tub_names, opts=None):
     return records
 
 def get_model_by_type(model_type, cfg):
-    from donkeycar.parts.keras import KerasRNN_LSTM, KerasBehavioral, KerasCategorical, KerasIMU, KerasLinear, Keras3D_CNN
+    from donkeycar.parts.keras import KerasRNN_LSTM, KerasBehavioral, \
+        KerasCategorical, KerasIMU, KerasLinear, Keras3D_CNN, KerasIMUCategorical
  
     if model_type is None:
         model_type = "categorical"
@@ -372,15 +373,32 @@ def get_model_by_type(model_type, cfg):
     input_shape = (cfg.IMAGE_H, cfg.IMAGE_W, cfg.IMAGE_DEPTH)
 
     if model_type == "behavior":
-        kl = KerasBehavioral(num_outputs=2, num_behavior_inputs=len(cfg.BEHAVIOR_LIST), input_shape=input_shape)        
+        kl = KerasBehavioral(num_outputs=2,
+                             num_behavior_inputs=len(cfg.BEHAVIOR_LIST),
+                             input_shape=input_shape)
     elif model_type == "imu":
-        kl = KerasIMU(num_outputs=2, num_imu_inputs=6, input_shape=input_shape)        
+        kl = KerasIMU(num_outputs=2,
+                      num_imu_inputs=6,
+                      input_shape=input_shape)
+    elif model_type == 'imu_cat':
+        # combines categorical and IMU model
+        kl =KerasIMUCategorical (num_imu_inputs=6,
+                                 angle_bins=15,
+                                 throttle_bins=20,
+                                 input_shape=input_shape)
     elif model_type == "linear":
         kl = KerasLinear(input_shape=input_shape)
     elif model_type == "3d":
-        kl = Keras3D_CNN(image_w=cfg.IMAGE_W, image_h=cfg.IMAGE_H, image_d=cfg.IMAGE_DEPTH, seq_length=cfg.SEQUENCE_LENGTH)
+        print('\n-----------------------\n\t 3D CNN sequnce\n')
+        print('Color Channels:',cfg.IMAGE_DEPTH)
+        print('-------------------------')
+        kl = Keras3D_CNN(image_w=cfg.IMAGE_W,
+                         image_h=cfg.IMAGE_H,
+                         image_d=cfg.IMAGE_DEPTH,
+                         seq_length=cfg.SEQUENCE_LENGTH)
     elif model_type == "rnn":
-        kl = KerasRNN_LSTM(seq_length=cfg.SEQUENCE_LENGTH, input_shape=input_shape)
+        kl = KerasRNN_LSTM(seq_length=cfg.SEQUENCE_LENGTH,
+                           input_shape=input_shape)
     elif model_type == "categorical":
         kl = KerasCategorical(input_shape=input_shape)
     else:

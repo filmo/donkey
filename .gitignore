@@ -16,3 +16,4 @@ second_model
 d2/models/*
 dice.py
 d2/data
+scratch.py
