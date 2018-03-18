@@ -105,8 +105,8 @@ def collate_records(records, gen_records, opts):
     '''
     Passes in gen_records which is modified by reference. (not a deep copy). As a 
     result, it is not retunred
-    :param records: 
-    :param gen_records: 
+    :param records: list of paths to json records in a tub sorted by frame number
+    :param gen_records: declared in calling scope
     :param opts: 
     :return: 
     '''
@@ -116,13 +116,17 @@ def collate_records(records, gen_records, opts):
         index = get_record_index(record_path)
         sample = { 'tub_path' : basepath, "index" : index }
 
-        # print ('sample:',sample)
+        # key a string of 'path_name'+str(frame number)
+        # example: 'path/to/my_data_tub1234' for frame 1234 in tub "my_data_tub"
+        # this addition of the tub_path to the beginning of the key allows
+        # multiple tubs to have frames with the same numbers without collision.
         key = make_key(sample)
 
         if key in gen_records:
             continue
 
         with open(record_path, 'r') as fp:
+            # read the data in the json file. record_1234.json for example
             json_data = json.load(fp)
 
         image_filename = json_data["cam/image_array"]
@@ -268,8 +272,9 @@ def train(cfg, tub_names, model_name, transfer_model, model_type, continuous, au
     opts['keras_pilot'] = kl
     opts['continuous'] = continuous
 
-    # records is a python list of all the .json records in the tubs.
-    records = gather_records(cfg, tub_names, opts)
+    # records is a python list of all the .json records in the tubs
+    # sorted by frame number
+    records = gather_records(cfg, tub_names)
 
     print('collating %d records ...' % (len(records)))
     # gen_records is defined in this scope and passed by reference and modified
@@ -654,7 +659,10 @@ def multi_train(cfg, tub, model, transfer, model_type, continuous, aug):
         train_fn = sequence_train
 
     train_fn(cfg, tub, model, transfer, model_type, continuous, aug)
-    
+
+def augment_data():
+    pass
+
 if __name__ == "__main__":
     args = docopt(__doc__)
     cfg = dk.load_config()

@@ -267,7 +267,7 @@ class RC_Controller(object):
             if throttle_state:
                 self.delay_stop_count = 0
 
-            if self.show_commands:
+            if self.show_commands and self.delay_stop_count < self.delay_stop:
                 print("RC Controller: recording = ",throttle_state)
 
             self.recording = throttle_state
