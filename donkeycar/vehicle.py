@@ -101,7 +101,8 @@ class Vehicle():
                 if sleep_time > 0.0:
                     time.sleep(sleep_time)
                 else:
-                    print('Running slower than targe hZ of',rate_hz)
+                    hz = self.mem.get('hz')
+                    print('Running slower than targe hZ of',rate_hz,'actual:',hz)
 
         except KeyboardInterrupt:
             pass

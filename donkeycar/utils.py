@@ -346,18 +346,30 @@ def get_image_index(fnm):
 
 
 def get_record_index(fnm):
+    '''
+    key function for sorting the JSON records. Also used in 
+    collate records to similarly retrieve the frame number
+    :param fnm: 
+    :return: 
+    '''
+    # split the record which is in the format 'record_xxxx.json'
+    # into 'record' and 'xxxx.json' where xxxx represent the frame number.
     sl = os.path.basename(fnm).split('_')
+    # the 'xxxx.json' is further split to just return the frame number.
     return int(sl[1].split('.')[0])
 
 def gather_records(cfg, tub_names, opts=None):
-
+    # build tub objects for each tub path and put it in
+    # a list 'tubs'
     tubs = gather_tubs(cfg, tub_names)
 
     records = []
 
     for tub in tubs:
-        print(tub.path)
+        print('Tub Path:',tub.path)
         record_paths = glob.glob(os.path.join(tub.path, 'record_*.json'))
+        # uses the key function 'get_record_index' defined above to sort
+        # based on the frame number embedded in the record name.
         record_paths.sort(key=get_record_index)
         records += record_paths
 

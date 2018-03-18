@@ -28,6 +28,7 @@ from donkeycar.parts.imu import Mpu6050
 from donkeycar.parts.datastore import TubHandler, TubGroup
 from donkeycar.parts.controller import LocalWebController, JoystickController
 from donkeycar.parts.RCcontroller import RC_Controller
+from donkeycar.parts.observed_hertz import ObservedHertz
 
 from pprint import pprint
 
@@ -166,7 +167,8 @@ def drive(cfg, model_path=None, use_joystick=False, use_rcControl=False,model_ty
         # however, this load method will overwrite the .model by loading the one found at this
         # path irrespective of whatever was defined above.
         kl.load(model_path)
-
+        # display the model being used.
+        kl.model.summary()
         # run_condition acts as a flag the causes the part to only run if the condition is true.
         # in this case 'run_pilot' must be true. (Set by the Lamda 'pilot_condition' part above.)
         V.add(kl,   inputs=inputs,
@@ -222,6 +224,11 @@ def drive(cfg, model_path=None, use_joystick=False, use_rcControl=False,model_ty
     th = TubHandler(path=cfg.DATA_PATH)
     tub = th.new_tub_writer(inputs=inputs, types=types)
     V.add(tub, inputs=inputs, run_condition='recording')
+
+    # monitor the actual Hz achieved by the vehicle object. Needs
+    # to be run non-threaded to work.
+    oz = ObservedHertz(display=False)
+    V.add(oz,outputs=['hz'],threaded=False)
 
     # run the vehicle for 20 seconds
     V.start(rate_hz=cfg.DRIVE_LOOP_HZ,
