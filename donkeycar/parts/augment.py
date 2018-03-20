@@ -36,21 +36,37 @@ def rand_persp_transform(img):
 
     return img.transform((width, height), Image.PERSPECTIVE, coeffs, Image.BICUBIC)
 
-def rand_color_balance(img):
+def rand_cb_idx():
+    '''
+    Helper function for rand_color_balance so that we can use a repeatable color balance if desired
+    :return: int index for use with rand_color_balance
+    '''
+
+    # values below 2000 seem highly unrealistic.
+    # this index corresponds with kelvin_table dictionary in rand_color_balance
+    kelvin_table_idx = np.array([2000,2500,3000,3500,4000,4500,5000,
+                                 5500,6000,6500,7000,7500,8000,8500,9000,
+                                 9500,10000,11000,12000])
+
+    return np.random.choice(kelvin_table_idx)
+
+def rand_color_balance(img,cb_idx=False):
     '''
     Largely younked from 
     https://stackoverflow.com/questions/11884544/setting-color-temperature-for-a-given-image-like-in-photoshop
-    
+
+    Black Body Numbers in HEX:
+    http://www.vendian.org/mncharity/dir3/blackbody/
+
     Assumes that the image was mostly white-balanced correctly to begin with. Recording in certain artifical lighting 
     situations will violate that assumption. Particularly sodium vapor lights which are not full spectrum.
-    :param img: image from Pi Camera
-    :return: a random white balance perturbation.
+
+    See also: rand_cb_idx()
+
+    :param img: image from Pi Camera in Image PIL format.
+    :return: a white balance perturbation.
     '''
     img_converted = img.copy()
-    kelvin_table_idx = np.array([1000,1500,2000,2500,3000,3500,4000,4500,5000,
-                                5500,6000,6500,7000,7500,8000,8500,9000,9500,10000])
-    kelvin_table_idx = np.array([2000,2500,3000,3500,4000,4500,5000,
-                                5500,6000,6500,7000,7500,8000,8500,9000,9500,10000])
 
     kelvin_table = {
             1000: (255, 56, 0),
@@ -71,18 +87,63 @@ def rand_color_balance(img):
             8500: (220, 229, 255),
             9000: (214, 225, 255),
             9500: (208, 222, 255),
-            10000: (204, 219, 255)}
+            10000: (204, 219, 255),
+            11000: (196, 215, 255),
+            12000: (191, 211, 255)}
 
-    # pick a color balance at random.
-    rand_idx = np.random.choice(kelvin_table_idx)
-    r, g, b = kelvin_table[rand_idx]
+    if not cb_idx:
+        # pick a color balance at random if not passed in as a parameter
+        cb_idx = rand_cb_idx()
+    r, g, b = kelvin_table[cb_idx]
 
-    print('Picked:',rand_idx)
+    print('Picked:',cb_idx)
+
+    # apply the black body adjustment
     matrix = (r/255.0,    0.0,      0.0,      0.0,
               0.0,        g/255.0,  0.0,      0.0,
               0.0,        0.0,      b/255.0,  0.0)
 
     return img_converted.convert('RGB', matrix)
+
+def white_noise(img,var=0.05,lum_only=True):
+    '''
+    Take a PIL image and apply noise.
+    :param img: PIL image object
+    :param var: variance around 0 to multiply the pixel values by
+    :param lum_only: TRUE = brightness noise only, FALSE = Color Noise
+    :return: PIL image object.
+    '''
+    h = img.height
+    w = img.width
+    channels    = img.split()
+    img_np      = np.array(img)
+
+    if lum_only:
+        # generate one noise mask and apply to all channels
+        # The noise will only affect the relative brightness, but not color
+        noise_ary = np.random.normal(size=(h, w), scale=var)
+
+        for i in range(len(channels)):
+            # apply the noise elementwise as a percentage of the existing value
+            subtotal = np.multiply(noise_ary,img_np[:,:,i]) + img_np[:,:,i]
+            # clip the values to acceptable uint8 range
+            np.clip(a=subtotal,a_max=255,a_min=0,out=subtotal)
+            # convert the floating values to nearest unit8s
+            img_np[:,:,i] = np.array(subtotal,dtype=np.uint8)
+    else:
+        # apply noise so that it effects color as well.
+        for i in range(len(channels)):
+            # apply different noise values to each channel
+            noise_ary = np.random.normal(size=(h, w), scale=var)
+
+            # apply the noise elementwise as a percentage of the existing value
+            subtotal = np.multiply(noise_ary,img_np[:,:,i]) + img_np[:,:,i]
+            # clip the values to acceptable uint8 range
+            np.clip(a=subtotal,a_max=255,a_min=0,out=subtotal)
+            # convert the floating values to nearest unit8s
+            img_np[:,:,i] = np.array(subtotal,dtype=np.uint8)
+
+    return Image.fromarray(img_np)
 
 
 def augment_image(np_img, shadow_images=None, do_warp_persp=False):
