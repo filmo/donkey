@@ -148,7 +148,7 @@ def drive(cfg, model_path=None, use_joystick=False, use_rcControl=False,model_ty
                             'imu/gyr_y', 'imu/gyr_z'], threaded=True)
 
     # now we're going to get ready to setup of the DNN based on wether we have an IMU or not.
-    if model_type == "imu":
+    if model_type == 'imu' or model_type == 'imu_cat':
         assert (cfg.HAVE_IMU)
         # Run the pilot if the mode is not user.
         inputs = ['cam/image_array',

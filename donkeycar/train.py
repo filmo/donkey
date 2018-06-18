@@ -20,14 +20,12 @@ import os
 import glob
 import random
 import json
-
 from docopt import docopt
 import numpy as np
 
 from tensorflow.python import keras
 from tensorflow.python.keras import backend as K
 import tensorflow as tf
-
 
 import donkeycar as dk
 from donkeycar.parts.keras import KerasIMU,\
@@ -94,16 +92,39 @@ if deterministic:
     sess = tf.Session(graph=tf.get_default_graph(), config=session_conf)
     K.set_session(sess)
 
-
 '''
 Tub management
 '''
 def make_key(sample):
+    '''
+    This is the default key creator. The full path of the tub is used. Index number isn't zero padded.
+    :param sample:
+    :return:
+    '''
     tub_path = sample['tub_path']
     index = sample['index']
     return tub_path + str(index)
 
+def make_ordered_key(sample):
+    '''
+    make a smaller key. This orders by tub name, then frame index. I'm
+    thinking of adding a timestamp to the training data tub format so that we could
+    use that instead of tub_name. Index number is zero padded to
+    :param sample: dict sample
+    :return: reduced size key name 'tub_name-001234'
+    '''
+    tub_path = sample['tub_path']
+    index = sample['index']
+    return os.path.basename(tub_path)+'-'+str(index).zfill(8)
+#    return str(index).zfill(8)+'-'+os.path.basename(tub_path)
+
 def make_next_key(sample, index_offset):
+    '''
+    This is used in sequence traning.
+    :param sample:
+    :param index_offset:
+    :return:
+    '''
     tub_path = sample['tub_path']
     index = sample['index'] + index_offset
     return tub_path + str(index)
@@ -141,23 +162,25 @@ def collate_records(records, gen_records, opts):
         # example: 'path/to/my_data_tub1234' for frame 1234 in tub "my_data_tub"
         # this addition of the tub_path to the beginning of the key allows
         # multiple tubs to have frames with the same numbers without collision.
-        key = make_key(sample)
+        #key = make_key(sample)
+        key = make_ordered_key(sample)
 
         if key in gen_records:
+            print ('*** WARN *** Found duplicate key:',key)
             continue
 
         with open(record_path, 'r') as fp:
             # read the data in the json file. record_1234.json for example
             json_data = json.load(fp)
 
-        image_filename = json_data["cam/image_array"]
-        image_path = os.path.join(basepath, image_filename)
+        image_filename  = json_data["cam/image_array"]
+        image_path      = os.path.join(basepath, image_filename)
 
         sample['record_path'] = record_path
-        sample["image_path"] = image_path
-        sample["json_data"] = json_data        
+        sample["image_path"]  = image_path
+        sample["json_data"]   = json_data
 
-        angle = float(json_data['user/angle'])
+        angle    = float(json_data['user/angle'])
         throttle = float(json_data["user/throttle"])
 
         # print ('before binning: angle',angle,'throttle',throttle)
@@ -168,7 +191,6 @@ def collate_records(records, gen_records, opts):
 
             # added defaults for angle here for clarity.
             angle    = dk.utils.linear_bin(angle,    N=15, offset=1.0, R=2.0)
-
             # 2018-06-23. Shift the throttle range to offset= -0.5, R = 0.5.
             # this will clamp any values below 50% throttle to 0 and expand the
             # usable range. Below 50% my DK doesn't move.
@@ -176,8 +198,8 @@ def collate_records(records, gen_records, opts):
             #throttle = dk.utils.linear_bin(throttle, N=20, offset=0.0, R=1.0)
 
 
-        sample['angle'] = angle
-        sample['throttle'] = throttle
+        sample['angle']     = angle
+        sample['throttle']  = throttle
         # print (sample['angle'],"\n",sample['throttle'])
         # count+= 1
         # if count > 50:
@@ -203,18 +225,16 @@ def collate_records(records, gen_records, opts):
             pass
 
         sample['img_data'] = None
+        sample['original_img_data'] = None
 
         #now assign test or val
-        sample['train'] = (random.uniform(0., 1.0) > 0.2)
-
+        sample['train'] = (random.uniform(0., 1.0) > opts['val_split'])
         gen_records[key] = sample
     if opts['pickle_file']:
         pickle.dump(gen_records,file)
 
 class MyCPCallback(keras.callbacks.ModelCheckpoint):
-    '''
-    custom callback to interact with best val loss during continuous training
-    '''
+
 
     def __init__(self, send_model_cb=None, *args, **kwargs):
         super(MyCPCallback, self).__init__(*args, **kwargs)
@@ -262,18 +282,15 @@ def train(cfg, tub_names, model_name, transfer_model, model_type, continuous, au
 
     verbose = cfg.VEBOSE_TRAIN
 
-    
     if continuous:
         print("continuous training")
     
     gen_records = {}
     opts = {}
-
-    opts['categorical'] = False
-
     # model is initialized with 'adam' optimizer which can be overridden below.
     kl = get_model_by_type(model_type, cfg=cfg)
 
+    opts['val_split']   = 1 - cfg.TRAIN_TEST_SPLIT
     opts['categorical'] = type(kl) is KerasCategorical or type(kl) is KerasIMUCategorical
     opts['pickle_file'] = 'imu_data_both.pkl'
 
@@ -349,6 +366,10 @@ def train(cfg, tub_names, model_name, transfer_model, model_type, continuous, au
             record_used = []
 
             keys = list(data.keys())
+            if isTrainSet:
+                print ('\nShuffling Traing: #records = ',len(keys))
+            else:
+                print ('Shuffling Validation')
 
             shuffle(keys)
 
@@ -356,15 +377,10 @@ def train(cfg, tub_names, model_name, transfer_model, model_type, continuous, au
 
             if type(kl.model.output) is list:
                 model_out_shape = (2, 1)
+                #print('model output shape list', kl.model.output)
             else:
                 model_out_shape = kl.model.output.shape
-
-            ''' 2018-03-11 -- appears to be dead code.
-            if type(kl.model.input) is list:
-                model_in_shape = (2, 1)
-            else:    
-                model_in_shape = kl.model.input.shape
-            '''
+                #print ('model output shape',kl.model.output.shape)
 
             has_imu = type(kl) is KerasIMU or type(kl) is KerasIMUCategorical
             has_bvh = type(kl) is KerasBehavioral

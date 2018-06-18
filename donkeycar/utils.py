@@ -107,16 +107,49 @@ def rgb2gray(rgb):
 def load_scaled_image_arr(filename, cfg):
     '''
     load an image from the filename, and use the cfg to resize if needed
+    This allows you to record higher resolution images like 320 x 240 but then
+    train on lower resolution versions.
+    :returns: uint8 image scaled to normal training size.
     '''
     import donkeycar as dk
     img = Image.open(filename)
     if img.height != cfg.IMAGE_H or img.width != cfg.IMAGE_W:
-        img = img.resize((cfg.IMAGE_H, cfg.IMAGE_W))
+        img = img.resize((cfg.IMAGE_W, cfg.IMAGE_H))
     img_arr = np.array(img)
     if img_arr.shape[2] == 3 and cfg.IMAGE_DEPTH == 1:
         img_arr = dk.utils.rgb2gray(img_arr).reshape(cfg.IMAGE_H, cfg.IMAGE_W, 1)
     return img_arr
 
+def global_contrast_normalization(img,eps=10e-8):
+    '''
+    Perform per image normalization
+
+    Deeplearning - Goodfellow et. all page 442
+
+    :param img: a numpy image array
+    :return:    a numpy image array with contrast normalization
+    '''
+    if len(img.shape) == 4:
+        # this is a batch of images. Normalize on a per image basis
+        means = np.mean(img,axis=(1,2,3))   # per image mean
+        stds  = np.std(img, axis=(1,2,3))   # per image std
+        # vectorize the normalization
+        batch = (img - means[:,None,None,None])/np.maximum(stds,eps)[:,None,None,None]
+        return batch
+    else:
+        return (img - np.mean(img))/max(eps,np.std(img))
+
+def img_norm(img,zero_mean=False):
+    '''
+    Returns a [0,1] image. If zero_mean = True, returns [-1,1]
+    :param img: numpy image array
+    :param zero_mean: boolean True = [-1,1] False = [0,1]
+    :return: numpy image array normalized.
+    '''
+    if zero_mean:
+        return 2*(img - np.min(img))/np.ptp(img) - 1
+    else:
+        return (img - np.min(img))/np.ptp(img)
 
 '''
 FILES
