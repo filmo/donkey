@@ -76,6 +76,7 @@ class Vehicle():
 
             self.on = True
 
+            # start all the threaded parts. Non-threaded parts would just run when called.
             for entry in self.parts:
                 if entry.get('thread'):
                     #start the update thread
@@ -99,6 +100,9 @@ class Vehicle():
                 sleep_time = 1.0 / rate_hz - (time.time() - start_time)
                 if sleep_time > 0.0:
                     time.sleep(sleep_time)
+                else:
+                    hz = self.mem['hz']
+                    print('Running slower than targe hZ of',rate_hz,'actual:',hz)
 
         except KeyboardInterrupt:
             pass
@@ -114,6 +118,9 @@ class Vehicle():
             #don't run if there is a run condition that is False
             run = True
             if entry.get('run_condition'):
+                # this is where the 'running' state is called from memory.
+                # the controllers can output a variable called 'running' which is then
+                # accessed here.
                 run_condition = entry.get('run_condition')
                 run = self.mem.get([run_condition])[0]
                 #print('run_condition', entry['part'], entry.get('run_condition'), run)
