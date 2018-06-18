@@ -35,7 +35,8 @@ from donkeycar.parts.keras import KerasIMU,\
 from donkeycar.parts.augment import augment_image
 from donkeycar.utils import *
 
-from sklearn.utils import shuffle
+# from sklearn.utils import shuffle
+from random import shuffle
 from pprint import pprint
 np.set_printoptions(precision=4,suppress=True,linewidth=100)
 
@@ -56,6 +57,7 @@ deterministic = False
 if deterministic:
     import random as rn
 
+    print ('****** DETERMINISTIC *******')
     # The below is necessary in Python 3.2.3 onwards to
     # have reproducible behavior for certain hash-based operations.
     # See these references for further details:
@@ -365,12 +367,10 @@ def train(cfg, tub_names, model_name, transfer_model, model_type, continuous, au
             batch_data = []
             record_used = []
 
-            keys = list(data.keys())
-            if isTrainSet:
-                print ('\nShuffling Traing: #records = ',len(keys))
-            else:
-                print ('Shuffling Validation')
 
+            keys = list(data.keys())
+
+            # random.shuffle is in-place. sklean.shuffle returns the shuffled array !! 2018-06-27
             shuffle(keys)
 
             kl = opts['keras_pilot']
@@ -470,7 +470,6 @@ def train(cfg, tub_names, model_name, transfer_model, model_type, continuous, au
                         y = [np.array(angles), np.array(throttles)]
 
                     yield X, y
-
                     batch_data = []
 
     model_path = os.path.expanduser(model_name)
@@ -535,7 +534,7 @@ def train(cfg, tub_names, model_name, transfer_model, model_type, continuous, au
 
     if cfg.USE_EARLY_STOP:
         callbacks_list.append(early_stop)
-    
+
     history = kl.model.fit_generator(
                     train_gen, 
                     steps_per_epoch=steps_per_epoch, 
