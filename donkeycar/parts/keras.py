@@ -15,7 +15,8 @@ It also 'bins' the throttle rather than leaving it linear as in the original cod
 '''
 
 import numpy as np
-import keras
+#import keras
+from tensorflow.python import keras
 
 import donkeycar as dk
 
@@ -92,15 +93,9 @@ class KerasPilot(object):
 class KerasCategorical(KerasPilot):
     def __init__(self, input_shape=(120, 160, 3), *args, **kwargs):
         super(KerasCategorical, self).__init__(*args, **kwargs)
-        self.model = default_categorical(input_shape)
+        self.model = default_categorical_original(input_shape)
         self.compile()
 
-    def compile(self):
-        self.model.compile(optimizer=self.optimizer,
-                  loss={'angle_out': 'categorical_crossentropy', 
-                        'throttle_out': 'categorical_crossentropy'},
-                  loss_weights={'angle_out': 0.5, 'throttle_out': 1.0})
-        
     def run(self, img_arr):
         if img_arr is None:
             print('no image')
@@ -127,7 +122,17 @@ class KerasCategorical(KerasPilot):
         angle = dk.utils.linear_unbin(angle_binned,N=angle_len, offset=-1, R=2.0)
 
         return angle, throttle
-    
+
+''' use the values in default_categorical_original. tawn is using categorical for 
+    throttle as well as angle. 
+
+    def compile(self):
+        self.model.compile(optimizer=self.optimizer,
+                  loss={'angle_out': 'categorical_crossentropy', 
+                        'throttle_out': 'mean_absolute_error'},
+                  loss_weights={'angle_out': 0.5, 'throttle_out': 1.0})
+'''
+
 class KerasLinear(KerasPilot):
     def __init__(self, num_outputs=2, input_shape=(120, 160, 3), *args, **kwargs):
         super(KerasLinear, self).__init__(*args, **kwargs)
@@ -316,7 +321,7 @@ class Keras3D_CNN(KerasPilot):
         return steering, throttle
 
 
-def default_categorical(input_shape=(120, 160, 3),aN=15,tN=20):
+def default_categorical_tawn(input_shape=(120, 160, 3),aN=15,tN=20):
     '''
     tawn version of categorical
     :param input_shape: 
@@ -370,18 +375,19 @@ def default_categorical(input_shape=(120, 160, 3),aN=15,tN=20):
     model = Model(inputs=[img_in], outputs=[angle_out, throttle_out])
     return model
 
-def default_categorical_original():
+def default_categorical_original(input_shape=(120, 160, 3)):
     '''
     This is the categorical given on the wroscoe master repository
     :return: 
     '''
-    from keras.layers import Input, Dense, merge
     from keras.models import Model
-    from keras.layers import Convolution2D, MaxPooling2D, Reshape, BatchNormalization
-    from keras.layers import Activation, Dropout, Flatten, Dense
+    from keras.layers import Input, Dense, merge
+    from keras.layers import Convolution2D, MaxPooling2D
+    from keras.layers import Activation, Dropout, Flatten, Cropping2D
 
-    img_in = Input(shape=(120, 160, 3),name='img_in')  # First layer, input layer, Shape comes from camera.py resolution, RGB
+    img_in = Input(shape=input_shape,name='img_in')  # First layer, input layer, Shape comes from camera.py resolution, RGB
     x = img_in
+    x = Cropping2D(cropping=((30, 0), (0, 0)))(x)  # trim 30 pixels off top
     x = Convolution2D(24, (5, 5), strides=(2, 2), activation='relu')(x)  # 24 features, 5 pixel x 5 pixel kernel (convolution, feauture) window, 2wx2h stride, relu activation
     x = Convolution2D(32, (5, 5), strides=(2, 2), activation='relu')(x)  # 32 features, 5px5p kernel window, 2wx2h stride, relu activatiion
     x = Convolution2D(64, (5, 5), strides=(2, 2), activation='relu')(x)  # 64 features, 5px5p kernal window, 2wx2h stride, relu

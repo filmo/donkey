@@ -20,10 +20,10 @@ import os
 import glob
 import random
 import json
-
 from docopt import docopt
 import numpy as np
-import keras
+#import keras
+from tensorflow.python import keras
 
 import donkeycar as dk
 from donkeycar.parts.keras import KerasIMU,\
@@ -92,11 +92,35 @@ if deterministic:
 Tub management
 '''
 def make_key(sample):
+    '''
+    This is the default key creator. The full path of the tub is used. Index number isn't zero padded.
+    :param sample:
+    :return:
+    '''
     tub_path = sample['tub_path']
     index = sample['index']
     return tub_path + str(index)
 
+def make_ordered_key(sample):
+    '''
+    make a smaller key. This orders by tub name, then frame index. I'm
+    thinking of adding a timestamp to the training data tub format so that we could
+    use that instead of tub_name. Index number is zero padded to
+    :param sample: dict sample
+    :return: reduced size key name 'tub_name-001234'
+    '''
+    tub_path = sample['tub_path']
+    index = sample['index']
+    return os.path.basename(tub_path)+'-'+str(index).zfill(8)
+#    return str(index).zfill(8)+'-'+os.path.basename(tub_path)
+
 def make_next_key(sample, index_offset):
+    '''
+    This is used in sequence traning.
+    :param sample:
+    :param index_offset:
+    :return:
+    '''
     tub_path = sample['tub_path']
     index = sample['index'] + index_offset
     return tub_path + str(index)
@@ -120,23 +144,25 @@ def collate_records(records, gen_records, opts):
         # example: 'path/to/my_data_tub1234' for frame 1234 in tub "my_data_tub"
         # this addition of the tub_path to the beginning of the key allows
         # multiple tubs to have frames with the same numbers without collision.
-        key = make_key(sample)
+        #key = make_key(sample)
+        key = make_ordered_key(sample)
 
         if key in gen_records:
+            print ('*** WARN *** Found duplicate key:',key)
             continue
 
         with open(record_path, 'r') as fp:
             # read the data in the json file. record_1234.json for example
             json_data = json.load(fp)
 
-        image_filename = json_data["cam/image_array"]
-        image_path = os.path.join(basepath, image_filename)
+        image_filename  = json_data["cam/image_array"]
+        image_path      = os.path.join(basepath, image_filename)
 
         sample['record_path'] = record_path
-        sample["image_path"] = image_path
-        sample["json_data"] = json_data        
+        sample["image_path"]  = image_path
+        sample["json_data"]   = json_data
 
-        angle = float(json_data['user/angle'])
+        angle    = float(json_data['user/angle'])
         throttle = float(json_data["user/throttle"])
 
         # print ('before binning: angle',angle,'throttle',throttle)
@@ -147,10 +173,10 @@ def collate_records(records, gen_records, opts):
 
             # added defaults for angle here for clarity.
             angle    = dk.utils.linear_bin(angle,    N=15, offset=1.0, R=2.0)
-            throttle = dk.utils.linear_bin(throttle, N=20, offset=0.0, R=1.0)
+            #throttle = dk.utils.linear_bin(throttle, N=20, offset=0.0, R=1.0)
 
-        sample['angle'] = angle
-        sample['throttle'] = throttle
+        sample['angle']     = angle
+        sample['throttle']  = throttle
         # print (sample['angle'],"\n",sample['throttle'])
         # count+= 1
         # if count > 50:
@@ -176,16 +202,14 @@ def collate_records(records, gen_records, opts):
             pass
 
         sample['img_data'] = None
+        sample['original_img_data'] = None
 
         #now assign test or val
-        sample['train'] = (random.uniform(0., 1.0) > 0.2)
-
+        sample['train'] = (random.uniform(0., 1.0) > opts['val_split'])
         gen_records[key] = sample
 
 class MyCPCallback(keras.callbacks.ModelCheckpoint):
-    '''
-    custom callback to interact with best val loss during continuous training
-    '''
+
 
     def __init__(self, send_model_cb=None, *args, **kwargs):
         super(MyCPCallback, self).__init__(*args, **kwargs)
@@ -233,18 +257,15 @@ def train(cfg, tub_names, model_name, transfer_model, model_type, continuous, au
 
     verbose = cfg.VEBOSE_TRAIN
 
-    
     if continuous:
         print("continuous training")
     
     gen_records = {}
     opts = {}
-
-    opts['categorical'] = False
-
     # model is initialized with 'adam' optimizer which can be overridden below.
     kl = get_model_by_type(model_type, cfg=cfg)
 
+    opts['val_split']   = 1 - cfg.TRAIN_TEST_SPLIT
     opts['categorical'] = type(kl) is KerasCategorical or type(kl) is KerasIMUCategorical
 
     print('training with model type', type(kl))
@@ -270,7 +291,8 @@ def train(cfg, tub_names, model_name, transfer_model, model_type, continuous, au
         print(kl.model.summary())
 
     opts['keras_pilot'] = kl
-    opts['continuous'] = continuous
+    opts['continuous']  = continuous
+    opts['aug']         = aug
 
     # records is a python list of all the .json records in the tubs
     # sorted by frame number
@@ -304,8 +326,13 @@ def train(cfg, tub_names, model_name, transfer_model, model_type, continuous, au
                         save_best.reset_best()
 
             batch_data = []
+            record_used = []
 
             keys = list(data.keys())
+            if isTrainSet:
+                print ('\nShuffling Traing: #records = ',len(keys))
+            else:
+                print ('Shuffling Validation')
 
             shuffle(keys)
 
@@ -313,15 +340,10 @@ def train(cfg, tub_names, model_name, transfer_model, model_type, continuous, au
 
             if type(kl.model.output) is list:
                 model_out_shape = (2, 1)
+                #print('model output shape list', kl.model.output)
             else:
                 model_out_shape = kl.model.output.shape
-
-            ''' 2018-03-11 -- appears to be dead code.
-            if type(kl.model.input) is list:
-                model_in_shape = (2, 1)
-            else:    
-                model_in_shape = kl.model.input.shape
-            '''
+                #print ('model output shape',kl.model.output.shape)
 
             has_imu = type(kl) is KerasIMU or type(kl) is KerasIMUCategorical
             has_bvh = type(kl) is KerasBehavioral
@@ -337,6 +359,16 @@ def train(cfg, tub_names, model_name, transfer_model, model_type, continuous, au
                     # this splits the data into 'training' and validation
                     continue
 
+                if _record['index'] in record_used:
+                    # this is to check to see if we're over sampling some records
+                    # in theory we should walk through the entire data set and never hit this.
+                    # each epoch we'll reshuffle the data and reset the 'used' set.
+                    print('** Reusing Index: ', _record['index'])
+
+                record_used.append(_record['index'])
+
+                # append the training data record to the batch_data list.
+                # once we reach a full batch size, we will process the batch below.
                 batch_data.append(_record)
 
                 if len(batch_data) == batch_size:
@@ -350,14 +382,14 @@ def train(cfg, tub_names, model_name, transfer_model, model_type, continuous, au
                         #get image data if we don't already have it
 
                         # if '--aug' then permute the image each epoch as well.
-                        if record['img_data'] is None or aug:
+                        if record['img_data'] is None or opts['aug']:
                         # if record['img_data'] is None:
                             filename = record['image_path']
                             
                             img_arr = load_scaled_image_arr(filename, cfg)
                             
-                            if aug:
-                                # print('a',end='',flush=True)
+                            if opts['aug']:
+                                #print('a',end='',flush=True)
                                 img_arr = augment_image(img_arr)
 
                             record['img_data'] = img_arr
@@ -409,9 +441,10 @@ def train(cfg, tub_names, model_name, transfer_model, model_type, continuous, au
                                                 verbose=verbose, 
                                                 mode='auto')
 
+
     train_gen = generator(save_best, opts, gen_records, cfg.BATCH_SIZE, True)
     val_gen   = generator(save_best, opts, gen_records, cfg.BATCH_SIZE, False)
- 
+
 
     total_records = len(gen_records)
 
@@ -440,6 +473,7 @@ def train(cfg, tub_names, model_name, transfer_model, model_type, continuous, au
     else:
         epochs = cfg.MAX_EPOCHS
 
+    aug = False
     if aug:
         workers_count = 4
         use_multiprocessing = True
@@ -481,6 +515,265 @@ def train(cfg, tub_names, model_name, transfer_model, model_type, continuous, au
                 print("not saving loss graph because matplotlib not set up.")
         except:
             print("problems with loss graph")
+
+"""
+def train_via_file(cfg, file_names, model_name, transfer_model, model_type, continuous, aug):
+    '''
+    use the specified data in tub_names to train an artifical neural network
+    saves the output trained model as model_name
+    '''
+
+    verbose = cfg.VEBOSE_TRAIN
+
+    if continuous:
+        print("continuous training")
+
+    gen_records = {}
+    opts = {}
+
+    opts['categorical'] = False
+
+    # model is initialized with 'adam' optimizer which can be overridden below.
+    kl = get_model_by_type(model_type, cfg=cfg)
+
+    opts['categorical'] = type(kl) is KerasCategorical or type(kl) is KerasIMUCategorical
+
+    print('training with model type', type(kl))
+
+    if transfer_model:
+        print('\n--- loading weights from model', transfer_model)
+        kl.load(transfer_model)
+        print('\n')
+        # when transfering models, should we freeze all but the last N layers?
+        if cfg.FREEZE_LAYERS:
+            num_to_freeze = len(kl.model.layers) - cfg.NUM_LAST_LAYERS_TO_TRAIN
+            print('freezing %d layers' % num_to_freeze)
+            for i in range(num_to_freeze):
+                kl.model.layers[i].trainable = False
+
+    if cfg.OPTIMIZER:
+        print('Setting optimizer to:', cfg.OPTIMIZER)
+        kl.set_optimizer(cfg.OPTIMIZER, cfg.LEARNING_RATE, cfg.LEARNING_RATE_DECAY)
+
+    kl.compile()
+
+    if cfg.PRINT_MODEL_SUMMARY:
+        print(kl.model.summary())
+
+    opts['keras_pilot'] = kl
+    opts['continuous'] = continuous
+
+    # records is a python list of all the .json records in the tubs
+    # sorted by frame number
+    records = gather_records(cfg, tub_names)
+
+    print('collating %d records ...' % (len(records)))
+    # gen_records is defined in this scope and passed by reference and modified
+    # directly inside 'collage_records'
+    # the keys of gen_record are a concat of tub_path + frame#
+    collate_records(records, gen_records, opts)
+
+    def generator(save_best, opts, data, batch_size, isTrainSet=True):
+
+        num_records = len(data)
+
+        while True:
+
+            if isTrainSet and opts['continuous']:
+                '''
+                When continuous training, we look for new records after each epoch.
+                This will add new records to the train and validation set.
+                '''
+                records = gather_records(cfg, tub_names, opts)
+                if len(records) > num_records:
+                    collate_records(records, gen_records, opts)
+                    new_num_rec = len(data)
+                    if new_num_rec > num_records:
+                        print('picked up', new_num_rec - num_records, 'new records!')
+                        num_records = new_num_rec
+                        save_best.reset_best()
+
+            batch_data = []
+
+            keys = list(data.keys())
+
+            shuffle(keys)
+
+            kl = opts['keras_pilot']
+
+            if type(kl.model.output) is list:
+                #
+                model_out_shape = (2, 1)
+                print('model output shape list', kl.model.output)
+            else:
+                model_out_shape = kl.model.output.shape
+                print('model output shape', kl.model.output.shape)
+
+            exit()
+            ''' 2018-03-11 -- appears to be dead code.
+            if type(kl.model.input) is list:
+                model_in_shape = (2, 1)
+            else:    
+                model_in_shape = kl.model.input.shape
+            '''
+
+            has_imu = type(kl) is KerasIMU or type(kl) is KerasIMUCategorical
+            has_bvh = type(kl) is KerasBehavioral
+
+            for key in keys:
+
+                if not key in data:
+                    continue
+
+                _record = data[key]
+
+                if _record['train'] != isTrainSet:
+                    # this splits the data into 'training' and validation
+                    continue
+
+                batch_data.append(_record)
+
+                if len(batch_data) == batch_size:
+                    inputs_img = []
+                    inputs_imu = []
+                    inputs_bvh = []
+                    angles = []
+                    throttles = []
+
+                    for record in batch_data:
+                        # get image data if we don't already have it
+
+                        # if '--aug' then permute the image each epoch as well.
+                        if record['img_data'] is None or aug:
+                            # if record['img_data'] is None:
+                            filename = record['image_path']
+
+                            img_arr = load_scaled_image_arr(filename, cfg)
+
+                            if aug:
+                                # print('a',end='',flush=True)
+                                img_arr = augment_image(img_arr)
+
+                            record['img_data'] = img_arr
+
+                        if has_imu:
+                            inputs_imu.append(record['imu_array'])
+
+                        if has_bvh:
+                            inputs_bvh.append(record['behavior_arr'])
+
+                        inputs_img.append(record['img_data'])
+                        angles.append(record['angle'])
+                        throttles.append(record['throttle'])
+
+                    img_arr = np.array(inputs_img).reshape(batch_size, \
+                                                           cfg.IMAGE_H, cfg.IMAGE_W, cfg.IMAGE_DEPTH)
+
+                    if has_imu:
+                        X = [img_arr, np.array(inputs_imu)]
+                    elif has_bvh:
+                        X = [img_arr, np.array(inputs_bvh)]
+                    else:
+                        X = [img_arr]
+
+                    if model_out_shape[1] == 2:
+                        y = [np.array([angles, throttles])]
+                    else:
+                        y = [np.array(angles), np.array(throttles)]
+
+                    yield X, y
+
+                    batch_data = []
+
+    model_path = os.path.expanduser(model_name)
+
+    # checkpoint to save model after each epoch and send best to the pi.
+    save_best = MyCPCallback(send_model_cb=send_model_to_pi,
+                             filepath=model_path,
+                             monitor='val_loss',
+                             verbose=verbose,
+                             save_best_only=True,
+                             mode='min')
+
+    # stop training if the validation error stops improving.
+    early_stop = keras.callbacks.EarlyStopping(monitor='val_loss',
+                                               min_delta=cfg.MIN_DELTA,
+                                               patience=cfg.EARLY_STOP_PATIENCE,
+                                               verbose=verbose,
+                                               mode='auto')
+
+    train_gen = generator(save_best, opts, gen_records, cfg.BATCH_SIZE, True)
+    val_gen   = generator(save_best, opts, gen_records, cfg.BATCH_SIZE, False)
+
+    total_records = len(gen_records)
+
+    num_train = 0
+    num_val = 0
+
+    for key, _record in gen_records.items():
+        if _record['train'] == True:
+            num_train += 1
+        else:
+            num_val += 1
+
+    print("train: %d, val: %d" % (num_train, num_val))
+    print('total records: %d' % (total_records))
+
+    if not continuous:
+        steps_per_epoch = num_train // cfg.BATCH_SIZE
+    else:
+        steps_per_epoch = 100
+
+    val_steps = 10
+    print('steps_per_epoch', steps_per_epoch)
+
+    if continuous:
+        epochs = 100000
+    else:
+        epochs = cfg.MAX_EPOCHS
+
+    if aug:
+        workers_count = 4
+        use_multiprocessing = True
+    else:
+        workers_count = 1
+        use_multiprocessing = False
+
+    callbacks_list = [save_best]
+
+    if cfg.USE_EARLY_STOP:
+        callbacks_list.append(early_stop)
+
+    history = kl.model.fit_generator(
+        train_gen,
+        steps_per_epoch=steps_per_epoch,
+        epochs=epochs,
+        verbose=cfg.VEBOSE_TRAIN,
+        validation_data=val_gen,
+        callbacks=callbacks_list,
+        validation_steps=val_steps,
+        workers=workers_count,
+        use_multiprocessing=use_multiprocessing)
+
+    print("\n\n----------- Best Eval Loss :%f ---------" % save_best.best)
+
+    if cfg.SHOW_PLOT:
+        try:
+            if do_plot:
+                # summarize history for loss
+                plt.plot(history.history['loss'])
+                plt.plot(history.history['val_loss'])
+                plt.title('model loss : %f' % save_best.best)
+                plt.ylabel('loss')
+                plt.xlabel('epoch')
+                plt.legend(['train', 'test'], loc='upper left')
+                plt.savefig(model_path + '_loss_%f.png' % save_best.best)
+                plt.show()
+            else:
+                print("not saving loss graph because matplotlib not set up.")
+        except:
+            print("problems with loss graph")
+"""
 
 def sequence_train(cfg, tub_names, model_name, transfer_model, model_type, continuous, aug=False):
     '''
@@ -654,7 +947,9 @@ def multi_train(cfg, tub, model, transfer, model_type, continuous, aug):
     '''
     choose the right regime for the given model type
     '''
+    # map the correct traning function onto 'train_fn'.
     train_fn = train
+
     if model_type == "rnn" or model_type == '3d':
         train_fn = sequence_train
 
