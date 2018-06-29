@@ -521,6 +521,7 @@ def train(cfg, tub_names, model_name, transfer_model, model_type, continuous, au
     else:
         epochs = cfg.MAX_EPOCHS
 
+    aug = False
     if aug:
         # workers_count = 1
         # use_multiprocessing = False
