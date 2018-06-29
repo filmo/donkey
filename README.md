@@ -1,3 +1,10 @@
+# -- Phil Glau fork of project
+This contains various bits and pieces I've added to the base project for my Donkeycar
+* RC controller: Allows you to use the RC controller that comes with the default RC car base. Needs an Arduino Teensy.
+* Various changes to the Keras Models
+* Expansion of the data augmentation initially started by Tawn Kramer.
+* Hertz monitoring part. Displays true running hz
+
 # donkeycar: a python self driving library 
 
 ![build status](https://travis-ci.org/wroscoe/donkey.svg?branch=master)
