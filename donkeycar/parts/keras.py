@@ -15,7 +15,10 @@ It also 'bins' the throttle rather than leaving it linear as in the original cod
 '''
 
 import numpy as np
-import keras
+
+#import keras
+from tensorflow.python import keras
+from keras import backend as K
 
 import donkeycar as dk
 
@@ -89,10 +92,35 @@ class KerasPilot(object):
                         validation_steps=steps*(1.0 - train_split))
         return hist
 
+    def clipped_mse_angle(self,y_true, y_pred):
+        '''
+        For Linear Models, we want to clip the predicted value to [-1,+1] for angle
+        https://stackoverflow.com/questions/43099233/keras-regression-clip-values
+        :param y_true:
+        :param y_pred:
+        :return:
+        '''
+        return K.mean(K.square(K.clip(y_pred, -1.0, 1.0) - K.clip(y_true, -1.0, 1.0)), axis=-1)
+
+    def clipped_mse_throttle(self,y_true, y_pred):
+        '''
+        For Linear Models, we want to clip the predicted value to [0,+1] for throttle
+        :param y_true:
+        :param y_pred:
+        :return:
+        '''
+        return K.mean(K.square(K.clip(y_pred, 0.0, 1.0) - K.clip(y_true, 0.0, 1.0)), axis=-1)
+
+
 class KerasCategorical(KerasPilot):
     def __init__(self, input_shape=(120, 160, 3), *args, **kwargs):
         super(KerasCategorical, self).__init__(*args, **kwargs)
-        self.model = default_categorical(input_shape)
+        #self.model = default_categorical(input_shape)
+        # self.model = default_categorical_ang_lin_throttle(input_shape)
+        self.model = default_categorical_ang_and_throttle(input_shape)
+        # self.model = smaller_categorical_original(input_shape)
+        # self.model = larger_categorical_original(input_shape)
+        # self.model = default_categorical_bn(input_shape)
         self.compile()
 
     def compile(self):
@@ -112,11 +140,15 @@ class KerasCategorical(KerasPilot):
         #we will test for shape of throttle to see if it's the newer
         #binned version.
         throttle_len = len(throttle[0])
-        if throttle_len > 0:
+        if throttle_len > 1:
             # the model returned a 1-hot vector which needs to be decoded into a scalar
             # to span from 0.0 to 1.0, R needs to be 1.0 and offset = 0.0
             # if you want to limit the range to 0.0 to 0.50, the R would be 0.50
-            throttle = dk.utils.linear_unbin(throttle, N=throttle_len, offset=0.0, R=1.0)
+            # throttle = dk.utils.linear_unbin(throttle, N=throttle_len, offset=0.0, R=1.0)
+
+            # 2018-06-23 - clamp values below 50% throttle to 0 and car doesn't move below that
+            # speed.
+            throttle = dk.utils.linear_unbin(throttle, N = 20, offset = 0.5, R = 0.5)
         else:
             # throttle was a scalar value from the model.
             throttle = throttle[0][0]
@@ -171,14 +203,22 @@ class KerasIMU(KerasPilot):
     def __init__(self, model=None, num_outputs=2, num_imu_inputs=6, input_shape=(120, 160, 3), *args, **kwargs):
         super(KerasIMU, self).__init__(*args, **kwargs)
         self.num_imu_inputs = num_imu_inputs
-        self.model          = default_imu(num_outputs = num_outputs,
-                                         num_imu_inputs = num_imu_inputs,
-                                         input_shape=input_shape)
+        default_lin_no_imu
+        self.model          = default_lin_no_imu(num_outputs = num_outputs,
+                                          num_imu_inputs = num_imu_inputs,
+                                          input_shape=input_shape)
+        #
+        # self.model          = default_imu(num_outputs = num_outputs,
+        #                                   num_imu_inputs = num_imu_inputs,
+        #                                   input_shape=input_shape)
         self.compile()
 
     def compile(self):
-        self.model.compile(optimizer=self.optimizer, loss='mse')
-        
+
+        self.model.compile(optimizer=self.optimizer,
+                          loss='mse')
+                            # loss = {'out_0': self.clipped_mse_angle, 'out_1': self.clipped_mse_throttle})
+
     def run(self, img_arr, accel_x, accel_y, accel_z, gyr_x, gyr_y, gyr_z):
         #TODO: would be nice to take a vector input array.
         img_arr = img_arr.reshape((1,) + img_arr.shape)
@@ -370,7 +410,97 @@ def default_categorical(input_shape=(120, 160, 3),aN=15,tN=20):
     model = Model(inputs=[img_in], outputs=[angle_out, throttle_out])
     return model
 
-def default_categorical_original():
+def default_categorical_bn(input_shape=(120, 160, 3)):
+    '''
+    Categorial Angle with Linear Throttle using BatchNorm between layers.
+    :return:
+    '''
+    from keras.models import Model
+    from keras.layers import Input, Dense, BatchNormalization
+    from keras.layers import Convolution2D, MaxPooling2D
+    from keras.layers import Activation, Dropout, Flatten, Cropping2D
+
+    img_in = Input(shape=input_shape,name='img_in')  # First layer, input layer, Shape comes from camera.py resolution, RGB
+    x = img_in
+    x = Cropping2D(cropping=((30, 0), (0, 0)))(x)  # trim 30 pixels off top
+    x = Convolution2D(24, (5, 5), strides=(2, 2))(x)  # 24 features, 5 pixel x 5 pixel kernel (convolution, feauture) window, 2wx2h stride, relu activation
+    x = BatchNormalization()(x)
+    x = Activation('relu')(x)
+    x = Convolution2D(32, (5, 5), strides=(2, 2))(x)  # 32 features, 5px5p kernel window, 2wx2h stride, relu activatiion
+    x = BatchNormalization()(x)
+    x = Activation('relu')(x)
+    x = Convolution2D(64, (5, 5), strides=(2, 2))(x)  # 64 features, 5px5p kernal window, 2wx2h stride, relu
+    x = BatchNormalization()(x)
+    x = Activation('relu')(x)
+    x = Convolution2D(64, (3, 3), strides=(2, 2))(x)  # 64 features, 3px3p kernal window, 2wx2h stride, relu
+    x = BatchNormalization()(x)
+    x = Activation('relu')(x)
+    x = Convolution2D(64, (3, 3), strides=(1, 1))(x)  # 64 features, 3px3p kernal window, 1wx1h stride, relu
+    x = BatchNormalization()(x)
+    x = Activation('relu')(x)
+
+    x = Flatten(name='flattened')(x)        # Flatten to 1D (Fully connected)
+    x = Dense(100, activation='relu')(x)    # Classify the data into 100 features, make all negatives 0
+    x = Dropout(.1)(x)                      # Randomly drop out (turn off) 10% of the neurons (Prevent overfitting)
+    x = Dense(50, activation='relu')(x)     # Classify the data into 50 features, make all negatives 0
+    x = Dropout(.1)(x)                      # Randomly drop out 10% of the neurons (Prevent overfitting)
+    # categorical output of the angle
+    angle_out = Dense(15, activation='softmax', name='angle_out')(x)  # Connect every input with every output and output 15 hidden units. Use Softmax to give percentage. 15 categories and find best one based off percentage 0.0-1.0
+
+    # continous output of throttle
+    throttle_out = Dense(1, activation='relu', name='throttle_out')(x)  # Reduce to 1 number, Positive number only
+
+    model = Model(inputs=[img_in], outputs=[angle_out, throttle_out])
+    model.compile(optimizer='adam',
+                  loss={'angle_out': 'categorical_crossentropy',
+                        'throttle_out': 'mean_absolute_error'},
+                  loss_weights={'angle_out': 0.9, 'throttle_out': .001})
+
+    return model
+
+def default_categorical_ang_and_throttle(input_shape=(120, 160, 3),aN=15,tN=20):
+    '''
+    This is the categorical given on the wroscoe master repository
+    :return:
+    '''
+    from keras.models import Model
+    from keras.layers import Input, Dense, merge
+    from keras.layers import Convolution2D, MaxPooling2D
+    from keras.layers import Activation, Dropout, Flatten, Cropping2D
+
+    img_in = Input(shape=input_shape,name='img_in')  # First layer, input layer, Shape comes from camera.py resolution, RGB
+    x = img_in
+    x = Cropping2D(cropping=((30, 0), (0, 0)))(x)  # trim 30 pixels off top
+    x = Convolution2D(24, (5, 5), strides=(2, 2), activation='relu')(x)  # 24 features, 5 pixel x 5 pixel kernel (convolution, feauture) window, 2wx2h stride, relu activation
+    x = Convolution2D(32, (5, 5), strides=(2, 2), activation='relu')(x)  # 32 features, 5px5p kernel window, 2wx2h stride, relu activatiion
+    x = Convolution2D(64, (5, 5), strides=(2, 2), activation='relu')(x)  # 64 features, 5px5p kernal window, 2wx2h stride, relu
+    x = Convolution2D(64, (3, 3), strides=(2, 2), activation='relu')(x)  # 64 features, 3px3p kernal window, 2wx2h stride, relu
+    x = Convolution2D(64, (3, 3), strides=(1, 1), activation='relu')(x)  # 64 features, 3px3p kernal window, 1wx1h stride, relu
+
+    x = Flatten(name='flattened')(x)        # Flatten to 1D (Fully connected)
+    x = Dense(100, activation='relu')(x)    # Classify the data into 100 features, make all negatives 0
+    x = Dropout(.1)(x)                      # Randomly drop out (turn off) 10% of the neurons (Prevent overfitting)
+    x = Dense(50, activation='relu')(x)     # Classify the data into 50 features, make all negatives 0
+    x = Dropout(.1)(x)                      # Randomly drop out 10% of the neurons (Prevent overfitting)
+    # categorical output of the angle
+    angle_out = Dense(aN, activation='softmax', name='angle_out')(x)  # Connect every input with every output and output 15 hidden units. Use Softmax to give percentage. 15 categories and find best one based off percentage 0.0-1.0
+
+    # continous output of throttle
+
+    #Binned throttle as well. 20 bins as the default from 0.0 to 1.0
+    throttle_out = Dense(tN, activation='softmax', name='throttle_out')(x)
+
+    model = Model(inputs=[img_in], outputs=[angle_out, throttle_out])
+
+    # loss_weights is the portion to which each contribute to the overall loss
+    model.compile(optimizer='adam',
+                  loss={'angle_out': 'categorical_crossentropy',
+                        'throttle_out': 'categorical_crossentropy'},
+                  loss_weights={'angle_out': 0.5, 'throttle_out': 0.5})
+
+    return model
+
+def default_categorical_ang_lin_throttle(input_shape=(120, 160, 3)):
     '''
     This is the categorical given on the wroscoe master repository
     :return: 
@@ -406,6 +536,87 @@ def default_categorical_original():
                   loss_weights={'angle_out': 0.9, 'throttle_out': .001})
 
     return model
+
+def larger_categorical_original(input_shape=(120, 160, 3)):
+    '''
+    This is the categorical given on the wroscoe master repository
+    :return:
+    '''
+    from keras.models import Model
+    from keras.layers import Input, Dense, merge
+    from keras.layers import Convolution2D, MaxPooling2D
+    from keras.layers import Activation, Dropout, Flatten, Cropping2D
+
+    img_in = Input(shape=input_shape,name='img_in')  # First layer, input layer, Shape comes from camera.py resolution, RGB
+    x = img_in
+    x = Cropping2D(cropping=((30, 0), (0, 0)))(x)  # trim 30 pixels off top
+    x = Convolution2D(64, (5, 5), strides=(2, 2), activation='relu')(x)  # 24 features, 5 pixel x 5 pixel kernel (convolution, feauture) window, 2wx2h stride, relu activation
+    x = Convolution2D(64, (5, 5), strides=(2, 2), activation='relu')(x)  # 32 features, 5px5p kernel window, 2wx2h stride, relu activatiion
+#    x = Convolution2D(64, (5, 5), strides=(2, 2), activation='relu')(x)  # 64 features, 5px5p kernal window, 2wx2h stride, relu
+    x = MaxPooling2D(pool_size=(2,2))(x)
+    x = Convolution2D(64, (3, 3), strides=(2, 1), activation='relu')(x)  # 64 features, 3px3p kernal window, 2wx2h stride, relu
+    x = Convolution2D(64, (3, 3), strides=(1, 1), activation='relu')(x)  # 64 features, 3px3p kernal window, 1wx1h stride, relu
+
+    x = Flatten(name='flattened')(x)        # Flatten to 1D (Fully connected)
+    x = Dense(100, activation='relu')(x)    # Classify the data into 100 features, make all negatives 0
+    x = Dropout(.1)(x)                      # Randomly drop out (turn off) 10% of the neurons (Prevent overfitting)
+    x = Dense(50, activation='relu')(x)     # Classify the data into 50 features, make all negatives 0
+    x = Dropout(.1)(x)                      # Randomly drop out 10% of the neurons (Prevent overfitting)
+    # categorical output of the angle
+    angle_out = Dense(15, activation='softmax', name='angle_out')(x)  # Connect every input with every output and output 15 hidden units. Use Softmax to give percentage. 15 categories and find best one based off percentage 0.0-1.0
+
+    # continous output of throttle
+    throttle_out = Dense(1, activation='relu', name='throttle_out')(x)  # Reduce to 1 number, Positive number only
+
+    model = Model(inputs=[img_in], outputs=[angle_out, throttle_out])
+    model.compile(optimizer='adam',
+                  loss={'angle_out': 'categorical_crossentropy',
+                        'throttle_out': 'mean_absolute_error'},
+                  loss_weights={'angle_out': 0.9, 'throttle_out': .001})
+
+    return model
+
+def smaller_categorical_original(input_shape=(120, 160, 3)):
+    '''
+    This is the categorical given on the wroscoe master repository
+    :return:
+    '''
+    from keras.models import Model
+    from keras.layers import Input, Dense, merge
+    from keras.layers import Convolution2D, MaxPooling2D
+    from keras.layers import Activation, Dropout, Flatten, Cropping2D
+
+    img_in = Input(shape=input_shape,name='img_in')  # First layer, input layer, Shape comes from camera.py resolution, RGB
+    x = img_in
+    x = Cropping2D(cropping=((30, 0), (0, 0)))(x)  # trim 30 pixels off top
+    x = Convolution2D(24, (5, 5), strides=(2, 2), activation='relu')(x)  # 24 features, 5 pixel x 5 pixel kernel (convolution, feauture) window, 2wx2h stride, relu activation
+    x = Convolution2D(32, (5, 5), strides=(2, 2), activation='relu')(x)  # 32 features, 5px5p kernel window, 2wx2h stride, relu activatiion
+    # the MaxPooling is the big part of dimensionality reduction on this smaller model
+    x = MaxPooling2D(pool_size=(2,2))(x)
+#    x = Convolution2D(64, (5, 5), strides=(2, 2), activation='relu')(x)  # 64 features, 5px5p kernal window, 2wx2h stride, relu
+    x = Convolution2D(64, (3, 3), strides=(2, 2), activation='relu')(x)  # 64 features, 3px3p kernal window, 2wx2h stride, relu
+#   x = Convolution2D(64, (3, 3), strides=(1, 1), activation='relu')(x)  # 64 features, 3px3p kernal window, 1wx1h stride, relu
+    x = MaxPooling2D(pool_size=(2,2))(x)
+
+    x = Flatten(name='flattened')(x)        # Flatten to 1D (Fully connected)
+    x = Dense(75, activation='relu')(x)    # Classify the data into 100 features, make all negatives 0
+    x = Dropout(.1)(x)                      # Randomly drop out (turn off) 10% of the neurons (Prevent overfitting)
+    x = Dense(40, activation='relu')(x)     # Classify the data into 50 features, make all negatives 0
+    x = Dropout(.1)(x)                      # Randomly drop out 10% of the neurons (Prevent overfitting)
+    # categorical output of the angle
+    angle_out = Dense(15, activation='softmax', name='angle_out')(x)  # Connect every input with every output and output 15 hidden units. Use Softmax to give percentage. 15 categories and find best one based off percentage 0.0-1.0
+
+    # continous output of throttle
+    throttle_out = Dense(1, activation='relu', name='throttle_out')(x)  # Reduce to 1 number, Positive number only
+
+    model = Model(inputs=[img_in], outputs=[angle_out, throttle_out])
+    model.compile(optimizer='adam',
+                  loss={'angle_out': 'categorical_crossentropy',
+                        'throttle_out': 'mean_absolute_error'},
+                  loss_weights={'angle_out': 0.9, 'throttle_out': .001})
+
+    return model
+
 
 def default_n_linear(num_outputs, input_shape):
     from keras.layers import Input, Dense
@@ -445,6 +656,58 @@ def default_n_linear(num_outputs, input_shape):
     
     return model
 
+
+def default_lin_no_imu(num_outputs, num_imu_inputs, input_shape):
+    '''
+    Notes: this model depends on concatenate which failed on keras < 2.0.8
+    This IMU model outputs to scalar values for angle and throttle and
+    is and extension of the default_n_linear model
+    '''
+
+    from keras.layers import Input, Dense
+    from keras.models import Model
+    from keras.layers import Convolution2D
+    from keras.layers import Dropout, Flatten, Cropping2D
+    from keras.layers.merge import concatenate
+
+    img_in = Input(shape=input_shape, name='img_in')
+    imu_in = Input(shape=(num_imu_inputs,), name="imu_in")
+
+    x = img_in
+    x = Cropping2D(cropping=((45, 0), (0, 0)))(x)  # trim 40 pixels off top
+    # x = Lambda(lambda x: x/127.5 - 1.)(x) # normalize and re-center
+    x = Convolution2D(24, (5, 5), strides=(2, 2), activation='relu')(x)
+    x = Convolution2D(32, (5, 5), strides=(2, 2), activation='relu')(x)
+    x = Convolution2D(64, (3, 3), strides=(2, 2), activation='relu')(x)
+    x = Convolution2D(64, (3, 3), strides=(1, 1), activation='relu')(x)
+    x = Convolution2D(64, (3, 3), strides=(1, 1), activation='relu')(x)
+    x = Flatten(name='flattened')(x)
+    x = Dense(100, activation='relu')(x)
+    x = Dropout(.1)(x)
+
+    #y = imu_in
+  #  y = Dense(14, activation='relu')(y)
+  #  y = Dropout(.1)(y)
+    #    y = Dense(14, activation='relu')(y)
+  #  y = Dense(14, activation='relu')(y)
+
+  #  z = concatenate([x, y])
+    z = Dense(75, activation='relu')(x)
+    z = Dropout(.1)(z)
+    z = Dense(50, activation='relu')(z)
+    z = Dropout(.1)(z)
+
+    outputs = []
+
+    # unlike the categorical model, this uses a purely linear output.
+    for i in range(num_outputs):
+        outputs.append(Dense(1, activation='linear', name='out_' + str(i))(z))
+
+    model = Model(inputs=[img_in, imu_in], outputs=outputs)
+
+    return model
+
+
 def default_imu(num_outputs, num_imu_inputs, input_shape):
     '''
     Notes: this model depends on concatenate which failed on keras < 2.0.8
@@ -462,7 +725,7 @@ def default_imu(num_outputs, num_imu_inputs, input_shape):
     imu_in = Input(shape=(num_imu_inputs,), name="imu_in")
     
     x = img_in
-    x = Cropping2D(cropping=((40,0), (0,0)))(x) #trim 40 pixels off top
+    x = Cropping2D(cropping=((45,0), (0,0)))(x) #trim 40 pixels off top
     #x = Lambda(lambda x: x/127.5 - 1.)(x) # normalize and re-center
     x = Convolution2D(24, (5,5), strides=(2,2), activation='relu')(x)
     x = Convolution2D(32, (5,5), strides=(2,2), activation='relu')(x)
@@ -475,11 +738,12 @@ def default_imu(num_outputs, num_imu_inputs, input_shape):
     
     y = imu_in
     y = Dense(14, activation='relu')(y)
-    y = Dense(14, activation='relu')(y)
+    y = Dropout(.1)(y)
+#    y = Dense(14, activation='relu')(y)
     y = Dense(14, activation='relu')(y)
     
     z = concatenate([x, y])
-    z = Dense(50, activation='relu')(z)
+    z = Dense(75, activation='relu')(z)
     z = Dropout(.1)(z)
     z = Dense(50, activation='relu')(z)
     z = Dropout(.1)(z)
@@ -518,25 +782,23 @@ def default_imu_categorical(input_shape=(120, 160, 3),num_imu_inputs = 6, aN=15,
     x = img_in
     x = Cropping2D(cropping=((30, 0), (0, 0)))(x)  # trim 35 pixels off top
     # x = Lambda(lambda x: x/127.5 - 1.)(x) # normalize and re-center
-    # on first layer we're going to stride by 3 in the vertical as there is more redudant
+    # on first layer we're going to stride by 3 in the vertical as there is more redundant
     # information than on the horizontal
-    x = Convolution2D(32, (5, 5), strides=(3, 2), activation='relu',padding='same')(x)
-    x = Convolution2D(32, (5, 5), strides=(2, 2), activation='relu',padding='same')(x)
+    x = Convolution2D(24, (5,5), strides=(2,2), activation='relu')(x)
+    x = Convolution2D(32, (5,5), strides=(2,2), activation='relu')(x)
+    x = Convolution2D(64, (3,3), strides=(2,2), activation='relu')(x)
+    x = Convolution2D(64, (3,3), strides=(2,2), activation='relu')(x)
+    x = Convolution2D(64, (3,3), strides=(1,1), activation='relu')(x)
 
-    # might want to add some pooling here for better translational invariance. ??
-#    x = MaxPooling2D(pool_size=(2,2))(x)
-
-    x = Convolution2D(64, (3, 3), strides=(2, 2), activation='relu')(x)
-    x = Convolution2D(64, (3, 3), strides=(1, 1), activation='relu')(x)
-    x = Convolution2D(64, (3, 3), strides=(1, 1), activation='relu')(x)
     x = Flatten(name='flattened')(x)
     x = Dense(100, activation='relu')(x)
     x = Dropout(.1)(x)
 
     y = imu_in
     y = Dense(14, activation='relu')(y)
+    y = Dropout(.1)(y)
     y = Dense(14, activation='relu')(y)
-    y = Dense(14, activation='relu')(y)
+#    y = Dense(14, activation='relu')(y)
 
     z = concatenate([x, y])
     z = Dense(50, activation='relu')(z)

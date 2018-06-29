@@ -1,4 +1,5 @@
 import time
+import numpy as np
 
 class Mpu6050:
     '''
@@ -26,6 +27,9 @@ class Mpu6050:
         self.threshold_zero = False
         self.accel_thres = 0.30
         self.gyro_thres  = 0.10
+        self.history_length = 3
+        self.hist = np.zeros(shape=(self.history_length,7),dtype=np.float32)
+        self.hist_idx = 0
 
     def calibrate(self):
         self.sensor.zero_mean_calibration()
@@ -51,6 +55,10 @@ class Mpu6050:
                 
     def poll(self):
         self.accel, self.gyro, self.temp = self.sensor.get_all_data()
+        data = np.asarray([self.accel['x'], self.accel['y'],self.accel['z'],
+                            self.gyro['x'], self.gyro['y'], self.gyro['z'],self.temp])
+        self.hist[self.hist_idx % self.history_length,...] = data
+        self.hist_idx += 1
 
     def run_threaded(self):
 
@@ -58,8 +66,9 @@ class Mpu6050:
             self.threshold_clamp()
 
         if self.debug:
-            print("x = %0.3f, y = %0.3f, gx = %0.3f, gy = %0.3f, gz=%0.3f" %
-                  (self.accel['x'], self.accel['y'], self.gyro['x'], self.gyro['y'], self.gyro['z']))
+            # set to '\n' if you want each reading on a new line.
+            print("x = %6.3f, y = %6.3f, gx = %6.3f, gy = %6.3f, gz=%6.3f" %
+                  (self.accel['x'], self.accel['y'], self.gyro['x'], self.gyro['y'], self.gyro['z']),end='\r')
 
         return self.accel['x'], self.accel['y'], self.accel['z'], self.gyro['x'], self.gyro['y'], self.gyro['z'], self.temp
 

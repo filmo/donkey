@@ -1,6 +1,10 @@
 env/*
 data/*
 dist/*
+models/*
+*.pkl
+*.png
+*.h5
 *.pyc
 .ipynb_checkpoints
 *.egg-info/

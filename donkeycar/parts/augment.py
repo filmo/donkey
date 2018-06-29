@@ -96,7 +96,7 @@ def rand_color_balance(img,cb_idx=False):
         cb_idx = rand_cb_idx()
     r, g, b = kelvin_table[cb_idx]
 
-    print('Picked:',cb_idx)
+    #print('Picked:',cb_idx)
 
     # apply the black body adjustment
     matrix = (r/255.0,    0.0,      0.0,      0.0,
@@ -146,7 +146,7 @@ def white_noise(img,var=0.05,lum_only=True):
     return Image.fromarray(img_np)
 
 
-def augment_image(np_img, shadow_images=None, do_warp_persp=False):
+def augment_image(np_img, shadow_images=None, do_warp_persp=False, do_cb=False, do_noise=False):
     img = Image.fromarray(np_img)
     #change the coloration, sharpness, and composite a shadow
     factor = random.uniform(0.75, 1.5)
@@ -179,6 +179,18 @@ def augment_image(np_img, shadow_images=None, do_warp_persp=False):
         optionaly warp perspective
         '''
         img = rand_persp_transform(img)
+
+    if do_cb:
+        '''
+        Optional color balance shift
+        '''
+        img = rand_color_balance(img=img)
+
+    if do_noise:
+        '''
+        White noise to either just the luminance or to color as well
+        '''
+        img = white_noise(img=img,var=0.05,lum_only=True)
 
     return np.array(img)
 
