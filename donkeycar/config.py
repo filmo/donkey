@@ -41,7 +41,6 @@ class Config:
 def load_config(config_path=None):
     
     if config_path is None:
-        print('here')
         import __main__ as main
         main_path = os.path.dirname(os.path.realpath(main.__file__))
         config_path = os.path.join(main_path, 'config.py')

@@ -143,9 +143,13 @@ def drive(cfg, model_path=None, use_joystick=False, use_rcControl=False,model_ty
         imu = Mpu6050(show_debug=True)
         # run self calibration to zero out the gyro and accelerometer. The Gyro needs it more than the accel does.
         imu.calibrate()
+        # smooth the IMU data by 3 samples
+        imu.setSmoothed(use=True,length=3)
+
         V.add(imu, outputs=['imu/acl_x', 'imu/acl_y',
                             'imu/acl_z','imu/gyr_x',
-                            'imu/gyr_y', 'imu/gyr_z'], threaded=True)
+                            'imu/gyr_y', 'imu/gyr_z',
+                            'imu/temp'], threaded=True)
 
     # now we're going to get ready to setup of the DNN based on wether we have an IMU or not.
     if model_type == 'imu' or model_type == 'imu_cat':
@@ -217,9 +221,9 @@ def drive(cfg, model_path=None, use_joystick=False, use_rcControl=False,model_ty
     if cfg.HAVE_IMU:
         # if we're collecting data from the IMU, then save it into the tub as well
         inputs += ['imu/acl_x', 'imu/acl_y', 'imu/acl_z',
-            'imu/gyr_x', 'imu/gyr_y', 'imu/gyr_z']
+            'imu/gyr_x', 'imu/gyr_y', 'imu/gyr_z','imu/temp']
 
-        types +=['float', 'float', 'float', 'float', 'float', 'float']
+        types +=['float', 'float', 'float', 'float', 'float', 'float','float']
 
     th = TubHandler(path=cfg.DATA_PATH)
     tub = th.new_tub_writer(inputs=inputs, types=types)
@@ -242,7 +246,11 @@ if __name__ == '__main__':
     model_type = args['--type']
 
     if args['drive']:
-        drive(cfg, model_path=args['--model'], use_joystick=args['--js'], use_rcControl=args['--rc'],model_type=model_type)
+        drive(cfg=cfg,
+              model_path=args['--model'],
+              use_joystick=args['--js'],
+              use_rcControl=args['--rc'],
+              model_type=model_type)
 
     if args['train']:
         from donkeycar.train import multi_train
