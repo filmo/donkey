@@ -12,6 +12,8 @@ class Mpu6050:
     python setup.py build
     sudo python setup.py install
 
+    poll_delay of .016667 = 60hz
+
     pip install mpu6050-raspberrypi
     '''
 
@@ -25,8 +27,10 @@ class Mpu6050:
         self.on = True
         self.debug = show_debug
         self.threshold_zero = False
-        self.accel_thres = 0.30
+        self.accel_thres = 0.05
         self.gyro_thres  = 0.10
+        # with poll delay = 60hz and car running at 20hz, we can average 3 IMU
+        # reading to get a slightly smoothed reading.
         self.history_length = 3
         self.hist = np.zeros(shape=(self.history_length,7),dtype=np.float32)
         self.hist_idx = 0
@@ -86,17 +90,17 @@ class Mpu6050:
             # set to '\n' if you want each reading on a new line.
             if self.use_smoothed:
                 smoothed = np.mean(self.hist, axis=0)
-                print("x = %6.3f, y = %6.3f, gx = %6.3f, gy = %6.3f, gz=%6.3f" %
+                print("smoothed x = %6.3f, y = %6.3f, gx = %6.3f, gy = %6.3f, gz=%6.3f" %
                       (smoothed[0], smoothed[1], smoothed[3], smoothed[4], smoothed[5],), end='\r')
             else:
                 print("x = %6.3f, y = %6.3f, gx = %6.3f, gy = %6.3f, gz=%6.3f" %
                   (self.accel['x'], self.accel['y'], self.gyro['x'], self.gyro['y'], self.gyro['z']),end='\r')
 
-        self.return_values()
+        return self.return_values()
 
     def run(self):
         self.poll()
-        self.return_values()
+        return self.return_values()
 
     def setSmoothed(self,use=True,length=3):
         '''
