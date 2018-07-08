@@ -2,6 +2,7 @@ env/*
 data/*
 dist/*
 models/*
+testing_files/*
 *.pkl
 *.png
 *.h5
