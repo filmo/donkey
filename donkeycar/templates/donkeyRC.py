@@ -146,6 +146,9 @@ def drive(cfg, model_path=None, use_joystick=False, use_rcControl=False,model_ty
         # smooth the IMU data by 3 samples
         imu.setSmoothed(use=True,length=3)
 
+        print ('Thresholding IMU:',imu.threshold_zero)
+        print ('Smoothing IMU:',imu.use_smoothed)
+
         V.add(imu, outputs=['imu/acl_x', 'imu/acl_y',
                             'imu/acl_z','imu/gyr_x',
                             'imu/gyr_y', 'imu/gyr_z',
