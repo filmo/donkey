@@ -1,4 +1,6 @@
 import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+from matplotlib import colors
 
 import numpy as np
 from pprint import pprint
@@ -8,17 +10,23 @@ import pickle
 
 pickle_open = False
 try:
-    file = open('imu_data.pkl', 'rb')
+    # file = open('imu_data.pkl', 'rb')
+    file = open('imu_data_smoothed.pkl', 'rb')
+
     imu_data_set = pickle.load(file)
 except:
-    file = open('imu_data.pkl', 'wb')
+    # file = open('imu_data.pkl', 'wb')
+    file = open('imu_data_smoothed.pkl', 'wb')
+
     pickle_open = True
 
     import donkeycar.train as dkt
     import donkeycar.config as dkconfig
 
-    path_for_training_config = '../d2IMU/config.py'
-    tub_names = '../d2IMU/data/double_line_IMU/2018-03-16_late_afternoon_320-240'
+    path_for_training_config = '../../d2IMU/config.py'
+
+    # tub_names = '../../d2IMU/data/double_line_IMU/2018-03-16_late_afternoon_320-240'
+    tub_names = '../../d2IMU/data/smoothed_imu/2018-07-08_3n_smooth_run_1'
 
     cfg = dkconfig.load_config(path_for_training_config)
 
@@ -27,7 +35,9 @@ except:
 
     gen_records ={}
     opts = {}
-    opts['pickle_file'] = '2018-03-16_late_afternoon_320-240.pkl'
+    # opts['pickle_file'] = '2018-03-16_late_afternoon_320-240.pkl'
+    opts['pickle_file'] = '2018-07-08_3n_smooth_run_1'
+
     opts['categorical'] = False
     opts['val_split']   = 1 - cfg.TRAIN_TEST_SPLIT
 
@@ -62,6 +72,45 @@ print('Mean Values:\t',mean_imu)
 print('Standard Dev:\t',std_imu)
 print('Min Values:  \t',min_imu)
 print('Max Values:  \t',max_imu)
+
+steer=imu_data_set[:,0]
+throt=imu_data_set[:,1]
+
+x = imu_data_set[:,2]
+y = imu_data_set[:,3]
+g_z = imu_data_set[:,7]
+g_y = imu_data_set[:,6]
+g_x = imu_data_set[:,5]
+fig, axs = plt.subplots(2, 3, figsize=(15, 10), tight_layout=True)
+
+# # We can increase the number of bins on each axis
+# axs[0].hist2d(x, y, bins=40)
+#
+# # As well as define normalization of the colors
+# axs[1].hist2d(x, y, bins=40, norm=colors.LogNorm())
+
+# We can also define custom numbers of bins for each axis
+axs[0,0].hist2d(y, g_z, bins=(80,80), norm=colors.LogNorm())
+axs[0,0].set_xlabel('accel-y vs gyro-z')
+axs[0,0].set_xlim(-5,5)
+axs[0,1].hist2d(x, g_z, bins=(80,80), norm=colors.LogNorm())
+axs[0,1].set_xlabel('accel-x vs gyro-z')
+axs[0,1].set_xlim(-5,5)
+
+axs[0,2].hist2d(steer, g_z, bins=(80,80), norm=colors.LogNorm())
+axs[0,2].set_xlabel('steer vs gyro-z')
+
+axs[1,0].hist2d(g_x,g_z  , bins=(80,80), norm=colors.LogNorm())
+axs[1,0].set_xlabel('gyro-x vs gyro-z')
+axs[1,0].set_xlim(-12,12)
+axs[1,1].hist2d(g_y,g_z, bins=(80,80), norm=colors.LogNorm())
+axs[1,1].set_xlim(-12,12)
+axs[1,1].set_xlabel('gyro-y vs gyro-z')
+
+axs[1,2].hist2d(throt, x, bins=(80,80), norm=colors.LogNorm())
+axs[1,2].set_xlabel('throttle vs accel-x')
+# axs[1,2].set_ylim(-4,4)
+plt.show()
 
 bin_spread = 0.20
 # build a figure that has the 5 primary gyroscope values. We ignore the accel-z axis
