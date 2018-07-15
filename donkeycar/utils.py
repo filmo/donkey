@@ -408,26 +408,42 @@ def gather_records(cfg, tub_names, opts=None):
 
     return records
 
-def get_model_by_type(model_type, cfg):
+def get_model_by_type( cfg, **kwargs):
     from donkeycar.parts.keras import KerasRNN_LSTM, KerasBehavioral, \
         KerasCategorical, KerasIMU, KerasLinear, Keras3D_CNN, KerasIMUCategorical
- 
+
+    model_type = kwargs['model_type']
+
     if model_type is None:
         model_type = "categorical"
 
+    # this is independent of the capture size. Typically 160x120 which is then
+    # further trimmed by the
     input_shape = (cfg.IMAGE_H, cfg.IMAGE_W, cfg.IMAGE_DEPTH)
 
     if model_type == "behavior":
         kl = KerasBehavioral(num_outputs=2,
                              num_behavior_inputs=len(cfg.BEHAVIOR_LIST),
                              input_shape=input_shape)
-    elif model_type == "imu":
+
+    elif model_type == "imu_lin":
+        if 'imu_inputs' in kwargs:
+            imu_inputs = kwargs['imu_inputs']
+        else:
+            imu_inputs = 6
+
         kl = KerasIMU(num_outputs=2,
-                      num_imu_inputs=6,
-                      input_shape=input_shape)
+                      num_imu_inputs=imu_inputs,
+                      input_shape=input_shape,
+                      **kwargs)
+
     elif model_type == 'imu_cat':
         # combines categorical and IMU model
-        kl =KerasIMUCategorical (num_imu_inputs=6,
+        if 'imu_inputs' in kwargs:
+            imu_inputs = kwargs['imu_inputs']
+        else:
+            imu_inputs = 6
+        kl =KerasIMUCategorical (num_imu_inputs=imu_inputs,
                                  angle_bins=15,
                                  throttle_bins=20,
                                  input_shape=input_shape)

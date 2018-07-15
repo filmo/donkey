@@ -94,27 +94,28 @@ class KerasPilot(object):
 
     def clipped_mse_angle(self,y_true, y_pred):
         '''
-        For Linear Models, we want to clip the predicted value to [-1,+1] for angle
+        For Linear Models, we may want to clip the predicted value to [-1,+1] for angle
         https://stackoverflow.com/questions/43099233/keras-regression-clip-values
-        :param y_true:
-        :param y_pred:
-        :return:
+        2018-07 - didn't work very well - Phil
+        :param y_true: true steering angle from traning data
+        :param y_pred: predicted steeting angle from model
+        :return: clipped mse loss
         '''
         return K.mean(K.square(K.clip(y_pred, -1.0, 1.0) - K.clip(y_true, -1.0, 1.0)), axis=-1)
 
     def clipped_mse_throttle(self,y_true, y_pred):
         '''
-        For Linear Models, we want to clip the predicted value to [0,+1] for throttle
-        :param y_true:
-        :param y_pred:
-        :return:
+        For Linear Models, we may want to clip the predicted value to [0,+1] for throttle
+        :param y_true: true throttle from training data
+        :param y_pred: predicted throtttle from model.
+        :return: clipped mse loss
         '''
         return K.mean(K.square(K.clip(y_pred, 0.0, 1.0) - K.clip(y_true, 0.0, 1.0)), axis=-1)
 
 
 class KerasCategorical(KerasPilot):
     def __init__(self, input_shape=(120, 160, 3), *args, **kwargs):
-        super(KerasCategorical, self).__init__(*args, **kwargs)
+        super(KerasCategorical, self).__init__()
         #self.model = default_categorical(input_shape)
         # self.model = default_categorical_ang_lin_throttle(input_shape)
         self.model = default_categorical_ang_and_throttle(input_shape)
@@ -205,28 +206,52 @@ class KerasIMU(KerasPilot):
 
     '''
     def __init__(self, model=None, num_outputs=2, num_imu_inputs=6, input_shape=(120, 160, 3), *args, **kwargs):
-        super(KerasIMU, self).__init__(*args, **kwargs)
-        self.num_imu_inputs = num_imu_inputs
-        default_lin_no_imu
-        self.model          = default_lin_no_imu(num_outputs = num_outputs,
-                                          num_imu_inputs = num_imu_inputs,
-                                          input_shape=input_shape)
-        #
-        # self.model          = default_imu(num_outputs = num_outputs,
-        #                                   num_imu_inputs = num_imu_inputs,
-        #                                   input_shape=input_shape)
+        super(KerasIMU, self).__init__()
+
+        if 'loss_func' in kwargs:
+            self.loss_func = kwargs['loss_func']
+            print ('Keras loss function set to:',self.loss_func)
+        else:
+            # default for linear is Mean Squared Error.
+            self.loss_func = 'mse'
+
+        if 'imu_inputs' in kwargs:
+            # there's a non default number of imu_inputs: example, eliminate accel_z
+            self.num_imu_inputs = kwargs['imu_inputs']
+        else:
+            self.num_imu_inputs = num_imu_inputs
+
+        if 'model_function' in kwargs:
+            # set a lambda model_func based on a string name contained in 'model_function' kwargs
+            model_func = eval(kwargs['model_function'])
+            print ('Using model_function:',kwargs['model_function'])
+            self.model = model_func(num_outputs = num_outputs,
+                                    num_imu_inputs = self.num_imu_inputs,
+                                    input_shape=input_shape,
+                                    **kwargs)
+        else:
+            self.model = default_imu(num_outputs = num_outputs,
+                                     num_imu_inputs = self.num_imu_inputs,
+                                     input_shape=input_shape)
         self.compile()
 
     def compile(self):
+        self.model.compile(optimizer=self.optimizer, loss=self.loss_func)
 
-        self.model.compile(optimizer=self.optimizer,
-                          loss='mse')
-                            # loss = {'out_0': self.clipped_mse_angle, 'out_1': self.clipped_mse_throttle})
-
-    def run(self, img_arr, accel_x, accel_y, accel_z, gyr_x, gyr_y, gyr_z):
+    def run(self, img_arr, *args):
+        '''
+        accel_x, accel_y, accel_z, gyr_x, gyr_y, gyr_z
+        :param img_arr:
+        :param args:
+        :return:
+        '''
         #TODO: would be nice to take a vector input array.
         img_arr = img_arr.reshape((1,) + img_arr.shape)
-        imu_arr = np.array([accel_x, accel_y, accel_z, gyr_x, gyr_y, gyr_z]).reshape(1,self.num_imu_inputs)
+
+        # 2018-07-12 - imu data is passed in as *args. This will create the correct set
+        # of batches for the IMU data
+        imu_arr = np.array(args).reshape(1,len(args))
+
         outputs = self.model.predict([img_arr, imu_arr])
         steering = outputs[0]
         throttle = outputs[1]
@@ -662,7 +687,7 @@ def default_n_linear(num_outputs, input_shape):
     return model
 
 
-def default_lin_no_imu(num_outputs, num_imu_inputs, input_shape):
+def default_lin_no_imu(num_outputs, num_imu_inputs, input_shape,*args,**kwargs):
     '''
     Notes: this model depends on concatenate which failed on keras < 2.0.8
     This IMU model outputs to scalar values for angle and throttle and
@@ -679,16 +704,21 @@ def default_lin_no_imu(num_outputs, num_imu_inputs, input_shape):
     imu_in = Input(shape=(num_imu_inputs,), name="imu_in")
 
     x = img_in
-    x = Cropping2D(cropping=((45, 0), (0, 0)))(x)  # trim 40 pixels off top
-    # x = Lambda(lambda x: x/127.5 - 1.)(x) # normalize and re-center
-    x = Convolution2D(24, (5, 5), strides=(2, 2), activation='relu')(x)
-    x = Convolution2D(32, (5, 5), strides=(2, 2), activation='relu')(x)
-    x = Convolution2D(64, (3, 3), strides=(2, 2), activation='relu')(x)
-    x = Convolution2D(64, (3, 3), strides=(1, 1), activation='relu')(x)
-    x = Convolution2D(64, (3, 3), strides=(1, 1), activation='relu')(x)
-    x = Flatten(name='flattened')(x)
-    x = Dense(100, activation='relu')(x)
-    x = Dropout(.1)(x)
+    if 'img_model' in kwargs:
+        for f in kwargs['img_model']:
+            keras_func = eval(f)
+            x = keras_func(x)
+    else:
+        x = Cropping2D(cropping=((45,0), (0,0)))(x) #trim 40 pixels off top
+        #x = Lambda(lambda x: x/127.5 - 1.)(x) # normalize and re-center
+        x = Convolution2D(24, (5,5), strides=(2,2), activation='relu')(x)
+        x = Convolution2D(32, (5,5), strides=(2,2), activation='relu')(x)
+        x = Convolution2D(64, (3,3), strides=(2,2), activation='relu')(x)
+        x = Convolution2D(64, (3,3), strides=(1,1), activation='relu')(x)
+        x = Convolution2D(64, (3,3), strides=(1,1), activation='relu')(x)
+        x = Flatten(name='flattened')(x)
+        x = Dense(100, activation='relu')(x)
+        x = Dropout(.1)(x)
 
     #y = imu_in
   #  y = Dense(14, activation='relu')(y)
@@ -712,8 +742,7 @@ def default_lin_no_imu(num_outputs, num_imu_inputs, input_shape):
 
     return model
 
-
-def default_imu(num_outputs, num_imu_inputs, input_shape):
+def default_imu(num_outputs, num_imu_inputs, input_shape,*args,**kwargs):
     '''
     Notes: this model depends on concatenate which failed on keras < 2.0.8
     This IMU model outputs to scalar values for angle and throttle and
@@ -730,28 +759,49 @@ def default_imu(num_outputs, num_imu_inputs, input_shape):
     imu_in = Input(shape=(num_imu_inputs,), name="imu_in")
     
     x = img_in
-    x = Cropping2D(cropping=((45,0), (0,0)))(x) #trim 40 pixels off top
-    #x = Lambda(lambda x: x/127.5 - 1.)(x) # normalize and re-center
-    x = Convolution2D(24, (5,5), strides=(2,2), activation='relu')(x)
-    x = Convolution2D(32, (5,5), strides=(2,2), activation='relu')(x)
-    x = Convolution2D(64, (3,3), strides=(2,2), activation='relu')(x)
-    x = Convolution2D(64, (3,3), strides=(1,1), activation='relu')(x)
-    x = Convolution2D(64, (3,3), strides=(1,1), activation='relu')(x)
-    x = Flatten(name='flattened')(x)
-    x = Dense(100, activation='relu')(x)
-    x = Dropout(.1)(x)
+    if 'img_model' in kwargs:
+        for f in kwargs['img_model']:
+            keras_func = eval(f)
+            x = keras_func(x)
+    else:
+        x = Cropping2D(cropping=((45,0), (0,0)))(x) #trim 45 pixels off top
+        #x = Lambda(lambda x: x/127.5 - 1.)(x) # normalize and re-center
+        x = Convolution2D(24, (5,5), strides=(2,2), activation='relu')(x)
+        x = Convolution2D(32, (5,5), strides=(2,2), activation='relu')(x)
+        x = Convolution2D(64, (3,3), strides=(2,2), activation='relu')(x)
+        x = Convolution2D(64, (3,3), strides=(1,1), activation='relu')(x)
+        x = Convolution2D(64, (3,3), strides=(1,1), activation='relu')(x)
+        x = Flatten(name='flattened')(x)
+        x = Dense(100, activation='relu')(x)
+        x = Dropout(.1)(x)
     
     y = imu_in
-    y = Dense(14, activation='relu')(y)
-    y = Dropout(.1)(y)
-#    y = Dense(14, activation='relu')(y)
-    y = Dense(14, activation='relu')(y)
-    
-    z = concatenate([x, y])
-    z = Dense(75, activation='relu')(z)
-    z = Dropout(.1)(z)
-    z = Dense(50, activation='relu')(z)
-    z = Dropout(.1)(z)
+
+    if 'imu_model' in kwargs:
+        print ('Setting custom IMU model')
+        # 'imu_model' is a list of keras functions as strings that are evaluated
+        # into function and then built attached to the model.
+        for f in kwargs['imu_model']:
+            print ('IMU Layer:',f)
+            keras_func = eval(f)
+            y = keras_func(y)
+    else:
+        # default IMU model
+        y = Dense(14, activation='relu')(y)
+        y = Dropout(.1)(y)
+        y = Dense(14, activation='relu')(y)
+        y = Dense(14, activation='relu')(y)
+
+    if 'concat_model' in kwargs:
+        for f in kwargs['concat_model']:
+            keras_func = eval(f)
+            z = keras_func(z)
+    else:
+        z = concatenate([x, y])
+        z = Dense(75, activation='relu')(z)
+        z = Dropout(.1)(z)
+        z = Dense(50, activation='relu')(z)
+        z = Dropout(.1)(z)
 
     outputs = [] 
 

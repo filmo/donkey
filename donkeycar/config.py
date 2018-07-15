@@ -48,5 +48,4 @@ def load_config(config_path=None):
     print('loading config file: {}'.format(config_path))
     cfg = Config()
     cfg.from_pyfile(config_path)
-    print('config loaded')
     return cfg
