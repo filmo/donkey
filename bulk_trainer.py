@@ -5,10 +5,12 @@ import numpy as np
 import pickle
 from pprint import pprint
 from exp1 import e_def as exp_n
-from exp2 import e_def as exp_n
-from exp3 import e_def as exp_n
-from exp4 import e_def as exp_n
-from exp5 import e_def as exp_n
+# from exp2 import e_def as exp_n
+# from exp3 import e_def as exp_n
+# from exp4 import e_def as exp_n
+# from exp5 import e_def as exp_n
+from exp6 import e_def as exp_n
+from exp7 import e_def as exp_n
 
 path_for_training_config = '../d2IMU/config.py'
 
@@ -28,7 +30,6 @@ gpu_ids     = ['gpu-0','gpu-2']
 # all_batches = [[64,128],[32,256]] # one experiment
 
 tub_names   = ','.join(imu_tubs)
-
 try:
     os.stat('models')
 except:
@@ -37,10 +38,10 @@ except:
 
 
 gpu_idx = 1
-experiment_date = '2018-07-15'
+experiment_date = '2018-07-17'
 
-experiments = exp_n(imu_tubs=imu_tubs)
-hist_pkl_name = 'exp_5'
+experiments = exp_n(tub_names)
+hist_pkl_name = 'exp_7'
 
 try:
     os.stat('models/' + experiment_date)
@@ -67,13 +68,15 @@ for experiment in experiments:
         all_history[experiment['exp']][bs] = {}
         all_history[experiment['exp']][bs]['run'] = {}
 
-        cfg.BATCH_SIZE = bs
+        experiment['batch_size'] = bs   # lets move away from using hardwired batch_size
+        cfg.BATCH_SIZE           = bs   # original project stores this a config option.
+
         try:
             os.stat(base_name+'/'+str(bs))
         except:
             os.mkdir(base_name+'/'+str(bs))
 
-        for i in range(1,4):
+        for i in range(1,5):
             # set the GPU ID so that we can run separate experiements on different GPUs and balance
             # the training load.
             experiment['gpu'] = gpu_ids[gpu_idx]

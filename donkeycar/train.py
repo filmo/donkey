@@ -16,8 +16,7 @@ Usage:
 Options:
     -h --help     Show this screen.    
 """
-import os
-import glob
+
 import random
 import json
 from docopt import docopt
@@ -35,6 +34,7 @@ from donkeycar.parts.keras import KerasIMU,\
 
 from donkeycar.parts.augment import augment_image
 from donkeycar.utils import *
+from donkeycar.parts.datagenerator import DataGenerator
 
 # from sklearn.utils import shuffle
 from random import shuffle,uniform
@@ -241,7 +241,7 @@ def collate_records(records, gen_records, opts):
         #now assign test or val
         sample['train'] = (random.uniform(0., 1.0) > opts['val_split'])
         gen_records[key] = sample
-    if opts['pickle_file']:
+    if 'pickle_file' in opts:
         pickle.dump(gen_records,file)
 
 class MyCPCallback(keras.callbacks.ModelCheckpoint):
@@ -300,6 +300,61 @@ def train(cfg, **kwargs):
     verbose = cfg.VEBOSE_TRAIN
     opts = {}
 
+    # model is initialized with 'adam' optimizer which can be overridden below.
+    kl = get_model_by_type(cfg=cfg,**kwargs)
+
+    if cfg.OPTIMIZER:
+        print('Setting optimizer to:', cfg.OPTIMIZER)
+        print('Learning Rate:',cfg.LEARNING_RATE, 'Decay:',cfg.LEARNING_RATE_DECAY)
+        kl.set_optimizer(cfg.OPTIMIZER, cfg.LEARNING_RATE, cfg.LEARNING_RATE_DECAY)
+
+    if 'transfer_model' in kwargs:
+        print('\n--- loading weights from model', kwargs['transfer_model'])
+        kl.load(kwargs['transfer_model'])
+        print('\n')
+        #when transfering models, should we freeze all but the last N layers?
+        if cfg.FREEZE_LAYERS:
+            num_to_freeze = len(kl.model.layers) - cfg.NUM_LAST_LAYERS_TO_TRAIN
+            print('freezing %d layers' % num_to_freeze)
+            for i in range(num_to_freeze):
+                kl.model.layers[i].trainable = False
+
+    if type(kl.model.output) is list:
+        opts['model_out_shape'] = (2, 1)
+    else:
+        opts['model_out_shape'] = kl.model.output.shape
+
+    kl.compile()
+
+    if cfg.PRINT_MODEL_SUMMARY:
+        print(kl.model.summary())
+
+    # set up the various options that are needed inside of either Train or DataGenerator
+    opts['has_imu'] = type(kl) is KerasIMU or type(kl) is KerasIMUCategorical
+    opts['has_bvh'] = type(kl) is KerasBehavioral
+    opts['val_split']   = 1 - cfg.TRAIN_TEST_SPLIT
+
+    # some of the config parts need to be moved to opts to avoid pickle error in generator
+    opts['IMAGE_W'] = cfg.IMAGE_W
+    opts['IMAGE_H'] = cfg.IMAGE_H
+    opts['IMAGE_DEPTH'] = cfg.IMAGE_DEPTH
+
+    opts['categorical'] = type(kl) is KerasCategorical or type(kl) is KerasIMUCategorical
+    # opts['keras_pilot'] = kl
+    if 'aug' in kwargs:
+        if kwargs['aug'] == True:
+            opts['aug'] = True
+            aug = True
+            print('Using Augmentation')
+        else:
+            opts['aug'] = False
+            aug = False
+            print('No Augmentation')
+
+    else:
+        aug = False
+        opts['aug'] = False
+
     if 'continuous' in kwargs:
         if kwargs['continuous'] == True:
             print("continuous training")
@@ -312,12 +367,6 @@ def train(cfg, **kwargs):
         continuous = False
         opts['continuous'] = False
 
-    # model is initialized with 'adam' optimizer which can be overridden below.
-    kl = get_model_by_type(cfg=cfg,**kwargs)
-
-    opts['val_split']   = 1 - cfg.TRAIN_TEST_SPLIT
-    opts['categorical'] = type(kl) is KerasCategorical or type(kl) is KerasIMUCategorical
-
     if 'pkl_cache' in kwargs:
         opts['pickle_file'] = kwargs['pkl_cache']
 
@@ -327,20 +376,10 @@ def train(cfg, **kwargs):
 
     print('training with model type', type(kl))
 
-    if 'transfer_model' in kwargs:
-        print('\n--- loading weights from model', kwargs['transfer_model'])
-        kl.load(kwargs['transfer_model'])
-        print('\n')
-        #when transfering models, should we freeze all but the last N layers?
-        if cfg.FREEZE_LAYERS:
-            num_to_freeze = len(kl.model.layers) - cfg.NUM_LAST_LAYERS_TO_TRAIN 
-            print('freezing %d layers' % num_to_freeze)           
-            for i in range(num_to_freeze):
-                kl.model.layers[i].trainable = False        
 
-    # records is a python list of all the .json records in the tubs
-    # sorted by frame number
-
+    # Gather the records from the various tubs. Will use a pickle cache is available
+    # this signficantly cuts down startup time on repeated experiements from the
+    # same tubs.
     print('Gathering Records')
     records = gather_records(cfg, kwargs['tubs'])
 
@@ -351,7 +390,8 @@ def train(cfg, **kwargs):
     gen_records = {}
     collate_records(records, gen_records, opts)
 
-    # divide gathered records into discrete sets
+    # divide gathered records into discrete sets. This is required for using
+    # the DataGenerator class.
     train_records = {}
     val_records   = {}
     num_train = 0
@@ -368,42 +408,16 @@ def train(cfg, **kwargs):
             val_records[k] = gen_records[k]
             num_val += 1
 
-    if cfg.OPTIMIZER:
-        print('Setting optimizer to:', cfg.OPTIMIZER)
-        print('Learning Rate:',cfg.LEARNING_RATE, 'Decay:',cfg.LEARNING_RATE_DECAY)
-        kl.set_optimizer(cfg.OPTIMIZER, cfg.LEARNING_RATE, cfg.LEARNING_RATE_DECAY)
-
-    kl.compile()
-
-    if cfg.PRINT_MODEL_SUMMARY:
-        print(kl.model.summary())
-
-    opts['keras_pilot'] = kl
-
-    if 'aug' in kwargs:
-        if kwargs['aug'] == True:
-            opts['aug'] = True
-            aug = True
-        else:
-            opts['aug'] = False
-            aug = False
-    else:
-        aug = False
-        opts['aug'] = False
-
+    # this is the default generator that can be used with continuous traning.
     def generator(save_best, opts, data, batch_size, isTrainSet=True):
         
         num_records = len(data)
 
-        kl = opts['keras_pilot']
 
-        if type(kl.model.output) is list:
-            model_out_shape = (2, 1)
-        else:
-            model_out_shape = kl.model.output.shape
+        model_out_shape = opts['model_out_shape']
 
-        has_imu = type(kl) is KerasIMU or type(kl) is KerasIMUCategorical
-        has_bvh = type(kl) is KerasBehavioral
+        has_imu = opts['has_imu']
+        has_bvh = opts['has_bvh']
 
         while True:
 
@@ -554,11 +568,22 @@ def train(cfg, **kwargs):
                                                 verbose=verbose, 
                                                 mode='auto')
 
-    train_gen = generator(save_best, opts, train_records, cfg.BATCH_SIZE, True)
-    val_gen   = generator(save_best, opts, val_records,   cfg.BATCH_SIZE, False)
+    if opts['continuous'] == False:
+        # this is the default training method on existing batchs of data from tubs
+        train_gen = DataGenerator(train_records,opts=opts,batch_size=kwargs['batch_size'])
+        val_gen   = DataGenerator(val_records,  opts=opts,batch_size=kwargs['batch_size'])
+        # for whatever reason, this needs to be set to False, otherwise the DataGenerator
+        # is incredibly slow. the worker_count will run as threads.
+        use_multiprocessing = False
+    else:
+        # this is for continous training
+        train_gen = generator(save_best, opts, train_records, cfg.BATCH_SIZE, True)
+        val_gen   = generator(save_best, opts, val_records,   cfg.BATCH_SIZE, False)
+        # with the default generator we need to run separate processes.
+        use_multiprocessing = True
+
 
     total_records = len(gen_records)
-
     print("train: %d, val: %d" % (num_train, num_val))
     print("total records: %d"  % (total_records))
     
@@ -577,28 +602,27 @@ def train(cfg, **kwargs):
     else:
         epochs = cfg.MAX_EPOCHS
 
-    if aug:
+    if not aug and opts['continuous'] == True:
         # 2018-07-14 -- The generators will duplicate data if run with more than 1 worker.
-        # should be using keras.utils.Sequence to build queue instead. This gaurantees
-        # data integrity and no duplication.
-
-        # workers_count = 1
-        # use_multiprocessing = False\
         workers_count = 1
-        use_multiprocessing = True
     else:
-        print('No augmentation ')
-        workers_count = 1
-        use_multiprocessing = True
+        # with augmentation we're less concerned about the same frame being seen multiple times
+        # in an epoch because it will be signficantly augmented
+
+        # the Datagenerator class is thread safe and gaurantees that we see each example only once,
+        # so it's safe to run n worker_threads
+        workers_count = 6
 
     callbacks_list = [save_best]
 
     if cfg.USE_EARLY_STOP:
         callbacks_list.append(early_stop)
 
+    print('workers_count', workers_count)
+    print('use_multiprocessing',use_multiprocessing)
     history = kl.model.fit_generator(
                     train_gen, 
-                    steps_per_epoch=steps_per_epoch, 
+                    steps_per_epoch=steps_per_epoch,
                     epochs=epochs, 
                     verbose=cfg.VEBOSE_TRAIN, 
                     validation_data=val_gen,

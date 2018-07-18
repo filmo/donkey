@@ -47,8 +47,8 @@ for gpu_id_exp in all_pkl_files:
         if not exp_num in avg_data:
             avg_data[exp_num] = []
         for _, (batch_size,v) in enumerate(v.items()):
-            if batch_size == 32 or batch_size == 256:
-                continue
+            # if batch_size == 32 or batch_size == 256:
+            #     continue
             run_data_init = [exp_num, batch_size]
             for _,(run_num,results) in enumerate(v['run'].items()):
                 # build the row of results for this particular run of the experiment

@@ -2,25 +2,30 @@ import keras
 import numpy as np
 import donkeycar.utils as dk_utils
 import donkeycar.parts.augment as dk_aug
+from PIL import Image
 
 class DataGenerator(keras.utils.Sequence):
     '''
      A separate generator needs to be instantiated for Training Data and Validation Data
      The 'records' passed in should contain only Traning Data or Validation data but not both. This
      is different than the default train.py generator.
+
+     This does not work with continuous training as the default train.py can.
+
+     This class largely based on this post:
+     https://stanford.edu/~shervine/blog/keras-how-to-generate-data-on-the-fly.html
     '''
-    def __init__(self, cfg, opts, records, batch_size=32, shuffle=True, *args, **kwargs):
+    def __init__(self, records, opts, batch_size=128, shuffle=True):
         'Initialization'
         self.batch_size = batch_size
         # tub_records is the 'gen_records' dictionary. Must contain only Train or Test data
         # not a mix of both!
         self.tub_records = records
         self.opts = opts
-        self.cfg  = cfg
         self.shuffle = shuffle
-
         # initialize the indexes upon initialization.
         self.on_epoch_end()
+        self.counter = 0
 
     def __len__(self):
         'Denotes the number of batches per epoch'
@@ -79,22 +84,17 @@ class DataGenerator(keras.utils.Sequence):
         for k in index_key_list:
             record = self.tub_records[k]
 
-            if record['original_img_data'] is None:
-                # image has never been loaded for this record. Load it into memory now.
-                img_arr = dk_utils.load_scaled_image_arr(record['image_path'], self.cfg)
-                # store as the original image. If later augmented, we can just reference
-                # this original rather than re-opening it again.
-                record['original_img_data'] = img_arr
+            img_arr = dk_utils.load_scaled_image_arr_opt(record['image_path'],self.opts)
 
             # perform the augmentation on the stored image to avoid the file IO at the cost of
             # memory to store images.
-            if self.opts['aug']:
+            if self.opts['aug'] == True:
                 # use the stored original image and augment it. Only done on training data
-                record['img_data'] = dk_aug.augment_image(record['original_img_data'], do_cb=True, do_noise=False)
+                record['img_data'] = dk_aug.augment_image(img_arr, do_cb=True, do_noise=False)
             else:
                 # no augmentation, just return the original image. No validation data is
                 # augmented either.
-                record['img_data'] = record['original_img_data']
+                record['img_data'] = img_arr
 
             if has_imu:
                 inputs_imu.append(record['imu_array'])
@@ -113,9 +113,9 @@ class DataGenerator(keras.utils.Sequence):
 
         # keras data needs to be numpy array
         img_arr = np.array(inputs_img).reshape(self.batch_size,
-                                               self.cfg.IMAGE_H,
-                                               self.cfg.IMAGE_W,
-                                               self.cfg.IMAGE_DEPTH)
+                                               self.opts['IMAGE_H'],
+                                               self.opts['IMAGE_W'],
+                                               self.opts['IMAGE_DEPTH'])
 
         # this should be reworked to be more flexible
         if has_imu:

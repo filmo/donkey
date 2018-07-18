@@ -104,6 +104,22 @@ def rgb2gray(rgb):
     return np.dot(rgb[...,:3], [0.299, 0.587, 0.114])
 
 
+def load_scaled_image_arr_opt(filename, opt):
+    '''
+    load an image from the filename, and use the cfg to resize if needed
+    This allows you to record higher resolution images like 320 x 240 but then
+    train on lower resolution versions.
+    :returns: uint8 image scaled to normal training size.
+    '''
+    img = Image.open(filename)
+    if img.height != opt['IMAGE_H'] or img.width != opt['IMAGE_W']:
+        img = img.resize((opt['IMAGE_W'], opt['IMAGE_H']))
+    img_arr = np.array(img)
+    if img_arr.shape[2] == 3 and opt['IMAGE_DEPTH'] == 1:
+        img_arr = rgb2gray(img_arr).reshape(opt['IMAGE_H'], opt['IMAGE_W'], 1)
+    return img_arr
+
+
 def load_scaled_image_arr(filename, cfg):
     '''
     load an image from the filename, and use the cfg to resize if needed
@@ -111,13 +127,12 @@ def load_scaled_image_arr(filename, cfg):
     train on lower resolution versions.
     :returns: uint8 image scaled to normal training size.
     '''
-    import donkeycar as dk
     img = Image.open(filename)
     if img.height != cfg.IMAGE_H or img.width != cfg.IMAGE_W:
         img = img.resize((cfg.IMAGE_W, cfg.IMAGE_H))
     img_arr = np.array(img)
     if img_arr.shape[2] == 3 and cfg.IMAGE_DEPTH == 1:
-        img_arr = dk.utils.rgb2gray(img_arr).reshape(cfg.IMAGE_H, cfg.IMAGE_W, 1)
+        img_arr = rgb2gray(img_arr).reshape(cfg.IMAGE_H, cfg.IMAGE_W, 1)
     return img_arr
 
 def global_contrast_normalization(img,eps=10e-8):
