@@ -3,14 +3,11 @@ import donkeycar.config as dkconfig
 import os
 import numpy as np
 import pickle
-from pprint import pprint
-from exp1 import e_def as exp_n
 # from exp2 import e_def as exp_n
 # from exp3 import e_def as exp_n
 # from exp4 import e_def as exp_n
 # from exp5 import e_def as exp_n
-from exp6 import e_def as exp_n
-from exp7 import e_def as exp_n
+from testing_files.exp8 import e_def as exp_n
 
 path_for_training_config = '../d2IMU/config.py'
 
@@ -29,7 +26,7 @@ imu_tubs = ['../d2IMU/data/smoothed_imu/2018-07-08_3n_smooth_run_1',
 gpu_ids     = ['gpu-0','gpu-2']
 # all_batches = [[64,128],[32,256]] # one experiment
 
-tub_names   = ','.join(imu_tubs)
+tub_names   = ','.join([imu_tubs[0]])
 try:
     os.stat('models')
 except:
@@ -37,8 +34,8 @@ except:
 
 
 
-gpu_idx = 1
-experiment_date = '2018-07-17'
+gpu_idx = 0
+experiment_date = '2018-07-18'
 
 experiments = exp_n(tub_names)
 hist_pkl_name = 'exp_7'
