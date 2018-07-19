@@ -50,6 +50,62 @@ def rand_cb_idx():
 
     return np.random.choice(kelvin_table_idx)
 
+def rand_color_balance_np(img_np,cb_idx=False):
+    '''
+    Largely younked from
+    https://stackoverflow.com/questions/11884544/setting-color-temperature-for-a-given-image-like-in-photoshop
+
+    Black Body Numbers in HEX:
+    http://www.vendian.org/mncharity/dir3/blackbody/
+
+    Assumes that the image was mostly white-balanced correctly to begin with. Recording in certain artifical lighting
+    situations will violate that assumption. Particularly sodium vapor lights which are not full spectrum.
+
+    This is a Numpy only solution and avoids a call to PIL which can involve costly Python GILs
+
+    See also: rand_cb_idx()
+
+    :param img_np: image converted to numpy format. (H,W,3)
+    :return: a white balance perturbation as numpy array of (H,W,3)
+    '''
+
+    kelvin_table = {
+            1000: (255, 56, 0),
+            1500: (255, 109, 0),
+            2000: (255, 137, 18),
+            2500: (255, 161, 72),
+            3000: (255, 180, 107),
+            3500: (255, 196, 137),
+            4000: (255, 209, 163),
+            4500: (255, 219, 186),
+            5000: (255, 228, 206),
+            5500: (255, 236, 224),
+            6000: (255, 243, 239),
+            6500: (255, 249, 253),
+            7000: (245, 243, 255),
+            7500: (235, 238, 255),
+            8000: (227, 233, 255),
+            8500: (220, 229, 255),
+            9000: (214, 225, 255),
+            9500: (208, 222, 255),
+            10000: (204, 219, 255),
+            11000: (196, 215, 255),
+            12000: (191, 211, 255)}
+
+    if not cb_idx:
+        # pick a color balance at random if not passed in as a parameter
+        cb_idx = rand_cb_idx()
+    r, g, b = kelvin_table[cb_idx]
+
+    # apply the black body adjustment
+    matrix = np.array([[r / 255.,   0,          0       ],
+                       [0,          g / 255.,   0       ],
+                       [0,          0,          b / 255.]])
+
+    new_color_balance = img_np.dot(matrix).round().astype(np.uint8)
+
+    return new_color_balance
+
 def rand_color_balance(img,cb_idx=False):
     '''
     Largely younked from 
