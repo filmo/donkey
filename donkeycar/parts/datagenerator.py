@@ -2,7 +2,7 @@ import keras
 import numpy as np
 import donkeycar.utils as dk_utils
 import donkeycar.parts.augment as dk_aug
-from PIL import Image
+from random import uniform
 
 class DataGenerator(keras.utils.Sequence):
     '''
@@ -15,7 +15,7 @@ class DataGenerator(keras.utils.Sequence):
      This class largely based on this post:
      https://stanford.edu/~shervine/blog/keras-how-to-generate-data-on-the-fly.html
     '''
-    def __init__(self, records, opts, batch_size=128, shuffle=True):
+    def __init__(self, records, opts, batch_size=128, shuffle=True,train=True):
         'Initialization'
         self.batch_size = batch_size
         # tub_records is the 'gen_records' dictionary. Must contain only Train or Test data
@@ -26,6 +26,7 @@ class DataGenerator(keras.utils.Sequence):
         # initialize the indexes upon initialization.
         self.on_epoch_end()
         self.counter = 0
+        self.train_generator = train
 
     def __len__(self):
         'Denotes the number of batches per epoch'
@@ -65,9 +66,9 @@ class DataGenerator(keras.utils.Sequence):
         Y is [[float,float]] for linear models or
              [[steering_bin],[throttle_bin]] for categorical models.
 
-        These are set in self.opts and self.cfg
+        These are set in self.opts
 
-        :param index_key_list: list of keys to the tub_records
+        :param index_key_list: list of keys to the tub_records for a given batch size
         :return: X,y
         '''
 
@@ -81,19 +82,36 @@ class DataGenerator(keras.utils.Sequence):
         angles = []
         throttles = []
 
+        if self.opts.get('no_aug_percent'):
+            conditional_aug_flag = True
+            clean_percent = self.opts.get('no_aug_percent')
+        else:
+            conditional_aug_flag = False
+            clean_percent = 0.0
+
         for k in index_key_list:
             record = self.tub_records[k]
 
+            # opens image and returns a numpy array (H,W,n)
             img_arr = dk_utils.load_scaled_image_arr_opt(record['image_path'],self.opts)
 
             # perform the augmentation on the stored image to avoid the file IO at the cost of
             # memory to store images.
-            if self.opts['aug'] == True:
+            if self.opts['aug'] == True and self.train_generator:
                 # use the stored original image and augment it. Only done on training data
-                record['img_data'] = dk_aug.augment_image(img_arr, do_cb=True, do_noise=False)
+                # opts['aug_args'] need to be a dict of augmentation options.
+                if conditional_aug_flag:
+                    # Train on a mix of clean and augmented data.
+                    if (uniform(0, 1) > clean_percent):
+                        record['img_data'] = dk_aug.augment_image(img_arr, **self.opts['aug_args'])
+                    else:
+                        record['img_data'] = img_arr
+                else:
+                    # augment all data
+                    record['img_data'] = dk_aug.augment_image(img_arr, **self.opts['aug_args'])
             else:
                 # no augmentation, just return the original image. No validation data is
-                # augmented either.
+                # augmented either. Set train = False for a validation generator.
                 record['img_data'] = img_arr
 
             if has_imu:

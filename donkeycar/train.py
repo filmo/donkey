@@ -335,34 +335,30 @@ def train(cfg, **kwargs):
     opts['val_split']   = 1 - cfg.TRAIN_TEST_SPLIT
 
     # some of the config parts need to be moved to opts to avoid pickle error in generator
+    # we do not pass the entire KerasPilot object into the datagenerator
     opts['IMAGE_W'] = cfg.IMAGE_W
     opts['IMAGE_H'] = cfg.IMAGE_H
     opts['IMAGE_DEPTH'] = cfg.IMAGE_DEPTH
-
     opts['categorical'] = type(kl) is KerasCategorical or type(kl) is KerasIMUCategorical
-    # opts['keras_pilot'] = kl
-    if 'aug' in kwargs:
-        if kwargs['aug'] == True:
-            opts['aug'] = True
-            aug = True
-            print('Using Augmentation')
-        else:
-            opts['aug'] = False
-            aug = False
-            print('No Augmentation')
 
+    if kwargs.get('aug'):
+        opts['aug'] = True
+        aug = True
+        print('Using Augmentation')
+        # dictionary of augmentation operations to perform
+        opts['aug_args']        = kwargs.get('aug_args')
+        # if set, then this percentage of clean data is used during training.
+        # 0.10 would mean use 10% clean and 90% augmented data.
+        opts['no_aug_percent']  = kwargs.get('no_aug_percent')
     else:
+        print('No Augmentation')
         aug = False
         opts['aug'] = False
 
-    if 'continuous' in kwargs:
-        if kwargs['continuous'] == True:
+    if kwargs.get('continuous'):
             print("continuous training")
             continuous = True
             opts['continuous']  = kwargs['continuous']
-        else:
-            continuous = False
-            opts['continuous'] = False
     else:
         continuous = False
         opts['continuous'] = False
@@ -376,8 +372,7 @@ def train(cfg, **kwargs):
 
     print('training with model type', type(kl))
 
-
-    # Gather the records from the various tubs. Will use a pickle cache is available
+    # Gather the records from the various tubs. Will use a pickle cache if available
     # this signficantly cuts down startup time on repeated experiements from the
     # same tubs.
     print('Gathering Records')
@@ -387,6 +382,8 @@ def train(cfg, **kwargs):
     # gen_records is defined in this scope and passed by reference and modified
     # directly inside 'collage_records'
     # the keys of gen_record are a concat of tub_path + frame#
+    # the collate_records call is expensive, so we cache the results in a pickle
+    # file to speed up subsequent experiments.
     gen_records = {}
     collate_records(records, gen_records, opts)
 
@@ -502,7 +499,7 @@ def train(cfg, **kwargs):
                         if opts['aug'] == True and isTrainSet==True:
                             # use the stored original image and augment it. Only done on training data
                             if (uniform(0,1) > 0.10):
-                                record['img_data'] = augment_image(record['original_img_data'],do_cb=True,do_noise=False)
+                                record['img_data'] = augment_image(record['original_img_data'],**kwargs['aug_args'])
                                 augmented_cnt += 1
                             else:
                                 # 10% of the time use the un-augmented original data.
@@ -570,7 +567,13 @@ def train(cfg, **kwargs):
 
     if opts['continuous'] == False:
         # this is the default training method on existing batchs of data from tubs
+        # When called with multiple workers and use_multiprocessing=False, it spawns
+        # N worker threads that can read and/or augment the data faster than the default
+        # generator while providing a guarantee that data is not duplicated.
         train_gen = DataGenerator(train_records,opts=opts,batch_size=kwargs['batch_size'])
+
+        # when instantiating a Validation Datagenerator set train=False.
+        #TODO: set this back to 'train=False' after last experiement 2018-07-23
         val_gen   = DataGenerator(val_records,  opts=opts,batch_size=kwargs['batch_size'])
         # for whatever reason, this needs to be set to False, otherwise the DataGenerator
         # is incredibly slow. the worker_count will run as threads.
@@ -603,14 +606,15 @@ def train(cfg, **kwargs):
         epochs = cfg.MAX_EPOCHS
 
     if not aug and opts['continuous'] == True:
-        # 2018-07-14 -- The generators will duplicate data if run with more than 1 worker.
+        # 2018-07-14 -- The default generators will duplicate data if run with more than 1 worker.
         workers_count = 1
     else:
         # with augmentation we're less concerned about the same frame being seen multiple times
-        # in an epoch because it will be signficantly augmented
+        # in an epoch because it will be significantly augmented
 
         # the Datagenerator class is thread safe and gaurantees that we see each example only once,
-        # so it's safe to run n worker_threads
+        # so it's safe to run n worker_threads. On my machine 6 is upper limit (Seems to mirror number of
+        # cores on machine, not counting the hyperthreading core. My machine has 6 physical cores.
         workers_count = 6
 
     callbacks_list = [save_best]
@@ -630,7 +634,7 @@ def train(cfg, **kwargs):
                     validation_steps=val_steps,
                     workers=workers_count,
                     use_multiprocessing=use_multiprocessing,
-                    max_queue_size=20
+                    max_queue_size=10
                     )
 
     print("\n\n----------- Best Eval Loss :%f ---------" % save_best.best)

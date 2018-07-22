@@ -109,7 +109,7 @@ def load_scaled_image_arr_opt(filename, opt):
     load an image from the filename, and use the cfg to resize if needed
     This allows you to record higher resolution images like 320 x 240 but then
     train on lower resolution versions.
-    :returns: uint8 image scaled to normal training size.
+    :returns: numpy array uint8 image scaled to normal training size.
     '''
     img = Image.open(filename)
     if img.height != opt['IMAGE_H'] or img.width != opt['IMAGE_W']:

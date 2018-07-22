@@ -7,10 +7,11 @@ import fnmatch
 
 from testing_files.exp6 import e_def as exp_6
 from testing_files.exp7 import e_def as exp_7
+from testing_files.exp8 import e_def as exp_8
 
 np.set_printoptions(precision=5,suppress=True,linewidth=150)
 
-pkl_path = '../models/2018-07-17'
+pkl_path = '../models/2018-07-21'
 
 
 pattern = '*.pkl'
@@ -19,15 +20,15 @@ pattern = '*.pkl'
 all_pkl_files = [f for f in os.listdir(pkl_path) if os.path.isfile(os.path.join(pkl_path,f))]
 
 
-e1 = exp_6([])
-e2 = exp_7([])
+e1 = exp_8([])
+# e2 = exp_7([])
 
 
 all_hist = {}
 for e in e1:
     all_hist[e['exp']] = e
-for e in e2:
-    all_hist[e['exp']] = e
+# for e in e2:
+#     all_hist[e['exp']] = e
 
 hist_order = ['loss','val_loss', 'out_0_loss', 'out_1_loss',  'val_out_0_loss', 'val_out_1_loss']
 
@@ -47,8 +48,8 @@ for gpu_id_exp in all_pkl_files:
         if not exp_num in avg_data:
             avg_data[exp_num] = []
         for _, (batch_size,v) in enumerate(v.items()):
-            if batch_size != 32:
-                continue
+            # if batch_size != 32:
+            #     continue
             run_data_init = [exp_num, batch_size]
             for _,(run_num,results) in enumerate(v['run'].items()):
                 # build the row of results for this particular run of the experiment
