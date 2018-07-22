@@ -3,6 +3,7 @@ import donkeycar.config as dkconfig
 import os
 import numpy as np
 import pickle
+from time import time
 # from exp2 import e_def as exp_n
 # from exp3 import e_def as exp_n
 # from exp4 import e_def as exp_n
@@ -35,10 +36,14 @@ except:
 
 
 gpu_idx = 0
-experiment_date = '2018-07-18'
+experiment_date = '2018-07-21'
 
 experiments = exp_n(tub_names)
-hist_pkl_name = 'exp_7'
+hist_pkl_name = 'exp_8'
+cfg.MAX_EPOCHS = 20
+
+aug_args = {'vary_color_balance':True,'vary_sharpness':True,'vary_bright':True,
+            'vary_contrast':True, 'add_noise':True,'vary_sat':True}
 
 try:
     os.stat('models/' + experiment_date)
@@ -73,7 +78,7 @@ for experiment in experiments:
         except:
             os.mkdir(base_name+'/'+str(bs))
 
-        for i in range(1,5):
+        for i in range(1,2):
             # set the GPU ID so that we can run separate experiements on different GPUs and balance
             # the training load.
             experiment['gpu'] = gpu_ids[gpu_idx]
@@ -81,14 +86,20 @@ for experiment in experiments:
             if (experiment['aug']):
                 # indicate on the model name that data augmentation was used.
                 aug_text = '_aug'
+                # aug_args could be moved into the exp files itself to facilitate looping
+                # over multiple various augmentations.
+                experiment['aug_args'] = aug_args
             else:
                 aug_text = ''
 
             model_file_name = base_name +'/'+ str(bs)+'/'+model_base_name + '_'+str(experiment['gpu'])+aug_text+'_v'+str(i)
             experiment['model_name'] = model_file_name
 
+            start_time = time()
             history = dkt.multi_train(cfg, **experiment)
+            end_time = time()
 
+            print ('Time to execute:',end_time-start_time)
             hist_order = ['loss', 'val_loss', 'out_0_loss', 'out_1_loss', 'val_out_0_loss', 'val_out_1_loss']
 
             hist_rows = []
@@ -114,7 +125,6 @@ for experiment in experiments:
                     'file':model_file_name}
 
             all_history[experiment['exp']][bs]['run'][i] = data
-
 
 file = open('models/' + experiment_date +'/'+hist_pkl_name+'_'+gpu_ids[gpu_idx]+'.pkl', 'wb')
 pickle.dump(all_history, file)

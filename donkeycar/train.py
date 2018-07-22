@@ -339,6 +339,9 @@ def train(cfg, **kwargs):
     opts['IMAGE_H'] = cfg.IMAGE_H
     opts['IMAGE_DEPTH'] = cfg.IMAGE_DEPTH
 
+    # dictionary of augmentation operations to perform
+    opts['aug_args']    = kwargs['aug_args']
+
     opts['categorical'] = type(kl) is KerasCategorical or type(kl) is KerasIMUCategorical
     # opts['keras_pilot'] = kl
     if 'aug' in kwargs:
@@ -502,7 +505,7 @@ def train(cfg, **kwargs):
                         if opts['aug'] == True and isTrainSet==True:
                             # use the stored original image and augment it. Only done on training data
                             if (uniform(0,1) > 0.10):
-                                record['img_data'] = augment_image(record['original_img_data'],do_cb=True,do_noise=False)
+                                record['img_data'] = augment_image(record['original_img_data'],**kwargs['aug_args'])
                                 augmented_cnt += 1
                             else:
                                 # 10% of the time use the un-augmented original data.
@@ -630,7 +633,7 @@ def train(cfg, **kwargs):
                     validation_steps=val_steps,
                     workers=workers_count,
                     use_multiprocessing=use_multiprocessing,
-                    max_queue_size=20
+                    max_queue_size=10
                     )
 
     print("\n\n----------- Best Eval Loss :%f ---------" % save_best.best)

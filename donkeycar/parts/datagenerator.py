@@ -84,13 +84,15 @@ class DataGenerator(keras.utils.Sequence):
         for k in index_key_list:
             record = self.tub_records[k]
 
+            # opens image and returns a numpy array (H,W,n)
             img_arr = dk_utils.load_scaled_image_arr_opt(record['image_path'],self.opts)
 
             # perform the augmentation on the stored image to avoid the file IO at the cost of
             # memory to store images.
             if self.opts['aug'] == True:
                 # use the stored original image and augment it. Only done on training data
-                record['img_data'] = dk_aug.augment_image(img_arr, do_cb=True, do_noise=False)
+                # opts['aug_args'] need to be a dict of augmentation options.
+                record['img_data'] = dk_aug.augment_image(img_arr, **self.opts['aug_args'])
             else:
                 # no augmentation, just return the original image. No validation data is
                 # augmented either.
