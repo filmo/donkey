@@ -643,7 +643,8 @@ def train(cfg, **kwargs):
     if cfg.SHOW_PLOT:
         try:
             if do_plot:
-                # summarize history for loss
+                # summarize history for loss (2018-07-23 skipping first epoch for more
+                # detail on chart
                 plt.plot(history.history['loss'][1:])
                 plt.plot(history.history['val_loss'][1:])
                 plt.title('model loss : %f' % save_best.best)

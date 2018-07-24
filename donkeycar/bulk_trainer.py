@@ -4,47 +4,42 @@ import os
 import numpy as np
 import pickle
 from time import time
-# from exp2 import e_def as exp_n
-from exp3 import e_def as exp_n
-# from exp4 import e_def as exp_n
-# from exp5 import e_def as exp_n
+
+from testing_files.exp3 import e_def as exp_n
 # from testing_files.exp8 import e_def as exp_n
 # from testing_files.exp9 import e_def as exp_n
 
-path_for_training_config = '../d2IMU/config.py'
+# on my set up I have GPUs at ID 0 and 2. This provides an index
+# into 'gpu_ids' list below.
+gpu_idx             = 0
+experiment_date     = '2018-07-21'  # folder into which experiment will be stored
+hist_pkl_name       = 'exp_10-3'    # name for resulting history file of experiment
 
-cfg = dkconfig.load_config(path_for_training_config)
-
-# tubs = ['../d2IMU/data/double_line/tub_double_line',
-#         '../d2IMU/data/double_line/tub_double_line_pt2']
-# # this imu data was thresholded
-# imu_tubs = ['../d2IMU/data/double_line_IMU/2018-03-16_late_afternoon_320-240',
-#             '../d2IMU/data/double_line_IMU/2018-03-10_evening_line_cross']
-
+# tubs of data to use
 imu_tubs = ['../d2IMU/data/smoothed_imu/2018-07-08_3n_smooth_run_1',
             '../d2IMU/data/smoothed_imu/2018-07-09_imu_run_2']
 
+# if augmenting data, which augmentations to perform. Color Balance and Noise are
+# most expensive. clean_percent is the percentage of training data that is not
+# augmented per batch on average. Batch_size = 64, clean_percent 0.10 = ~6.4 samples
+# are not augmented in the batch.
+aug_args = {'vary_color_balance':True,'vary_sharpness':True,'vary_bright':True,
+            'vary_contrast':True, 'add_noise':True,'vary_sat':True,
+            'clean_percent':0.10}
+
+path_for_training_config = '../d2IMU/config.py' # which config file to use as base
+cfg = dkconfig.load_config(path_for_training_config)
+cfg.MAX_EPOCHS = 30
 
 gpu_ids     = ['gpu-0','gpu-2']
-# all_batches = [[64,128],[32,256]] # one experiment
-
 tub_names   = ','.join(imu_tubs)
+
 try:
     os.stat('models')
 except:
     os.mkdir('models')
 
-
-gpu_idx = 1
-experiment_date = '2018-07-21'
-
 experiments = exp_n(tub_names)
-hist_pkl_name = 'exp_10-3'
-cfg.MAX_EPOCHS = 30
-
-aug_args = {'vary_color_balance':True,'vary_sharpness':True,'vary_bright':True,
-            'vary_contrast':True, 'add_noise':True,'vary_sat':True,
-            'clean_percent':0.00}
 
 try:
     os.stat('models/' + experiment_date)
@@ -101,7 +96,7 @@ for experiment in experiments:
             history = dkt.multi_train(cfg, **experiment)
             end_time = time()
 
-            print ('Time to execute:',end_time-start_time)
+            print ('Time for Experiment:',end_time-start_time)
             hist_order = ['loss', 'val_loss', 'out_0_loss', 'out_1_loss', 'val_out_0_loss', 'val_out_1_loss']
 
             hist_rows = []
