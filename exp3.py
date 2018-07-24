@@ -2,7 +2,7 @@
 Set of experiment as control for same image model but no IMU model
 '''
 
-def e_def(imu_tubs):
+def e_def(tub_name_string):
 
     i = 17
     experiments = [
@@ -12,7 +12,7 @@ def e_def(imu_tubs):
                     'model_function':'default_lin_no_imu',
                     'imu_inputs':6,
                     'pkl_cache':'2018-07_08_imu_data.pkl',
-                    'tubs':','.join(imu_tubs),
+                    'tubs':tub_name_string,
                     'aug':False},
         {'exp':i+1,
                     'model_base_name':'def_linear_no_imu',
@@ -20,7 +20,7 @@ def e_def(imu_tubs):
                     'model_function':'default_lin_no_imu',
                     'imu_inputs':6,
                     'pkl_cache':'2018-07_08_imu_data.pkl',
-                    'tubs':','.join(imu_tubs),
+                    'tubs':tub_name_string,
                     'aug':True},
 
                    ]

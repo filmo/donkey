@@ -36,7 +36,7 @@ except:
 
 
 
-gpu_idx = 0
+gpu_idx = 1
 experiment_date = '2018-07-21'
 
 experiments = exp_n(tub_names)
@@ -91,7 +91,7 @@ for experiment in experiments:
                 # aug_args could be moved into the exp files itself to facilitate looping
                 # over multiple various augmentations.
                 experiment['aug_args'] = aug_args
-                experiment['no_aug_percent'] = aug_args['aug_args']
+                experiment['no_aug_percent'] = aug_args['clean_percent']
             else:
                 aug_text = ''
 

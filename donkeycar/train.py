@@ -573,8 +573,7 @@ def train(cfg, **kwargs):
         train_gen = DataGenerator(train_records,opts=opts,batch_size=kwargs['batch_size'])
 
         # when instantiating a Validation Datagenerator set train=False.
-        #TODO: set this back to 'train=False' after last experiement 2018-07-23
-        val_gen   = DataGenerator(val_records,  opts=opts,batch_size=kwargs['batch_size'])
+        val_gen   = DataGenerator(val_records,  opts=opts,batch_size=kwargs['batch_size'],train=False)
         # for whatever reason, this needs to be set to False, otherwise the DataGenerator
         # is incredibly slow. the worker_count will run as threads.
         use_multiprocessing = False
@@ -643,8 +642,8 @@ def train(cfg, **kwargs):
         try:
             if do_plot:
                 # summarize history for loss
-                plt.plot(history.history['loss'])
-                plt.plot(history.history['val_loss'])
+                plt.plot(history.history['loss'][1:])
+                plt.plot(history.history['val_loss'][1:])
                 plt.title('model loss : %f' % save_best.best)
                 plt.ylabel('loss')
                 plt.xlabel('epoch')
