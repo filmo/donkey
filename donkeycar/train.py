@@ -339,6 +339,8 @@ def train(cfg, **kwargs):
     opts['IMAGE_W'] = cfg.IMAGE_W
     opts['IMAGE_H'] = cfg.IMAGE_H
     opts['IMAGE_DEPTH'] = cfg.IMAGE_DEPTH
+    # dictionary of augmentation operations to perform
+    opts['aug_args']    = kwargs['aug_args']
     opts['categorical'] = type(kl) is KerasCategorical or type(kl) is KerasIMUCategorical
 
     if kwargs.get('aug'):

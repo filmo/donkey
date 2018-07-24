@@ -35,7 +35,6 @@ except:
     os.mkdir('models')
 
 
-
 gpu_idx = 1
 experiment_date = '2018-07-21'
 
