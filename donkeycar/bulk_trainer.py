@@ -4,35 +4,66 @@ import os
 import numpy as np
 import pickle
 from time import time
+'''
+This is a bulk trainer that allows me to run multiple training sessions
+on my specific machine. You will need to adapt it extensively for your own
+use. I'm running two GTX-1070 GPUs on a 6-core i7 Ubuntu 16.04
 
-from testing_files.exp3 import e_def as exp_n
+definitions of each experiment are held in an importable 'e_def' function
+which provides a dictionary of setting for the experiements. Because I have two 
+GPU, I split my experiments up based on batch size. I typically train at both 64
+and 128. By altering the gpu_idx between 0 & 1 for each run, I can put the 64 batch
+size experiment on one GPU and the 128 batch size experiment on another. 
+
+This also requires my modifications to the Keras.py part and relies upon using
+my DataGenerator class.
+
+By altering what I import as 'exp_n', I can also run separate instances for seperate
+experiements or split my list of experiments over separate processes for a poor-mans 
+multi-processing. 
+
+Using my sepecfic gear, I can usually run 4 experiments at a time to reduce overall
+training time.
+
+If you are going to fix your experiments at a certain batch size, then it seems reasonable
+to rework this to split the work based on some other criteria. Perhaps you want to run a 
+'augmented' vs 'non_augmented' at the same time. Or perhaps you just want to run 4
+totally different experiements. ?? Up to you to figure out how to rework this.. :)
+'''
+
+# from testing_files.exp_13_aug import e_def as exp_n
+from testing_files.exp13b import e_def as exp_n
+
 # from testing_files.exp8 import e_def as exp_n
 # from testing_files.exp9 import e_def as exp_n
 
 # on my set up I have GPUs at ID 0 and 2. This provides an index
 # into 'gpu_ids' list below.
 gpu_idx             = 0
-experiment_date     = '2018-07-21'  # folder into which experiment will be stored
-hist_pkl_name       = 'exp_10-3'    # name for resulting history file of experiment
+experiment_date     = '2018-07-27'  # folder into which experiment will be stored
+hist_pkl_name       = 'exp_13b'    # name for resulting history file of experiment
 
 # tubs of data to use
 imu_tubs = ['../d2IMU/data/smoothed_imu/2018-07-08_3n_smooth_run_1',
             '../d2IMU/data/smoothed_imu/2018-07-09_imu_run_2']
 
+tub_names   = ','.join(imu_tubs)
+
 # if augmenting data, which augmentations to perform. Color Balance and Noise are
 # most expensive. clean_percent is the percentage of training data that is not
-# augmented per batch on average. Batch_size = 64, clean_percent 0.10 = ~6.4 samples
+# augmented per batch on average. If batch_size = 64, clean_percent 0.10 = ~6.4 samples
 # are not augmented in the batch.
-aug_args = {'vary_color_balance':True,'vary_sharpness':True,'vary_bright':True,
+aug_args = {'vary_color_balance':True,'vary_sharpness':False,'vary_bright':True,
             'vary_contrast':True, 'add_noise':True,'vary_sat':True,
-            'clean_percent':0.10}
+            'clean_percent':0.15}
 
 path_for_training_config = '../d2IMU/config.py' # which config file to use as base
 cfg = dkconfig.load_config(path_for_training_config)
 cfg.MAX_EPOCHS = 30
 
+# these are the NVIDIA gpu ids that show up when I run
+# echo $CUDA_VISIBLE_DEVICES.
 gpu_ids     = ['gpu-0','gpu-2']
-tub_names   = ','.join(imu_tubs)
 
 try:
     os.stat('models')

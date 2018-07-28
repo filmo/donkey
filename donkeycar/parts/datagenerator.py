@@ -18,7 +18,7 @@ class DataGenerator(keras.utils.Sequence):
      This class largely based on this post:
      https://stanford.edu/~shervine/blog/keras-how-to-generate-data-on-the-fly.html
     '''
-    def __init__(self, records, opts, batch_size=64, shuffle=True,train=True):
+    def __init__(self, records, opts, batch_size=64, shuffle=True,train=True, cache=False):
         '''
         Initialize a Datagenerator that conforms to Keras Sequence specifications
         :param records: the original 'gen_records' style dict used in original train.py
@@ -41,6 +41,7 @@ class DataGenerator(keras.utils.Sequence):
         # on my 6-core machine with two GTX-1070s, I can run 4 simultaneous experiments vs
         # 2 to 3 without caching.
         self.npy_cache = True
+        self.cache = cache
 
     def __len__(self):
         'Denotes the number of batches per epoch'
@@ -86,8 +87,9 @@ class DataGenerator(keras.utils.Sequence):
         :return: X,y
         '''
 
-        has_imu             = self.opts['has_imu']
-        has_bvh             = self.opts['has_bvh']
+        has_imu             = self.opts.get('has_imu')
+        imu_inputs          = self.opts.get('imu_inputs')
+        has_bvh             = self.opts.get('has_bvh')
         model_out_shape     = self.opts['model_out_shape']
 
         inputs_img = []

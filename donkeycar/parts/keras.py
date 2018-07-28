@@ -788,7 +788,6 @@ def default_imu(num_outputs, num_imu_inputs, input_shape,*args,**kwargs):
     else:
         # default IMU model
         y = Dense(14, activation='relu')(y)
-        y = Dropout(.1)(y)
         y = Dense(14, activation='relu')(y)
         y = Dense(14, activation='relu')(y)
 
