@@ -37,6 +37,21 @@ def rand_persp_transform(img):
 
     return img.transform((width, height), Image.PERSPECTIVE, coeffs, Image.BICUBIC)
 
+def load_shadow_images(path_mask):
+    shadow_images = []
+    filenames = glob.glob(path_mask)
+    for filename in filenames:
+        shadow = Image.open(filename)
+        shadow.thumbnail((256, 256))
+        channels = shadow.split()
+        if len(channels) != 4:
+            continue
+        r, g, b, a = channels
+        top = Image.merge("RGB", (r, g, b))
+        mask = Image.merge("L", (a,))
+        shadow_images.append((top, mask))
+    return shadow_images
+
 ''' Refactored Augmentations in pure numpy '''
 
 def rand_color_balance_np(img_np,cb_idx=False,renormalize=False):
@@ -332,20 +347,3 @@ def augment_image(np_img, **kwargs):
         img = rand_persp_transform(img)
 
     return np.clip(np_img,0,255)
-
-def load_shadow_images(path_mask):
-    shadow_images = []
-    filenames = glob.glob(path_mask)
-    for filename in filenames:
-        shadow = Image.open(filename)
-        shadow.thumbnail((256, 256))
-        channels = shadow.split()
-        if len(channels) != 4:
-            continue
-        r, g, b, a = channels
-        top = Image.merge("RGB", (r, g, b))
-        mask = Image.merge("L", (a,))
-        shadow_images.append((top, mask))
-    return shadow_images
-
-

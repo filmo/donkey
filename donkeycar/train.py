@@ -35,6 +35,7 @@ from donkeycar.parts.keras import KerasIMU,\
 from donkeycar.parts.augment import augment_image
 from donkeycar.utils import *
 from donkeycar.parts.datagenerator import DataGenerator
+from donkeycar.parts.ImageCache import ImageCache
 
 # from sklearn.utils import shuffle
 from random import shuffle,uniform
@@ -329,18 +330,21 @@ def train(cfg, **kwargs):
     if cfg.PRINT_MODEL_SUMMARY:
         print(kl.model.summary())
 
-    # set up the various options that are needed inside of either Train or DataGenerator
-    opts['has_imu'] = type(kl) is KerasIMU or type(kl) is KerasIMUCategorical
-    opts['has_bvh'] = type(kl) is KerasBehavioral
-    opts['val_split']   = 1 - cfg.TRAIN_TEST_SPLIT
+    # some of the config parts need to be moved to opts to avoid pickle error in DataGenerator
+    # we can not not pass the entire KerasPilot object into the datagenerator and other 'non-picklable'
+    # items in the cfg variable. Thus we remap what we need to 'opts'    # some of the config parts need to be moved to opts to avoid pickle error in DataGenerator
+    # we can not not pass the entire KerasPilot object into the datagenerator and other 'non-picklable'
+    # items in the cfg variable. Thus we remap what we need to 'opts'
 
-    # some of the config parts need to be moved to opts to avoid pickle error in generator
-    # we do not pass the entire KerasPilot object into the datagenerator
-    opts['IMAGE_W'] = cfg.IMAGE_W
-    opts['IMAGE_H'] = cfg.IMAGE_H
+    # set up the various options that are needed inside of either Train or DataGenerator
+    opts['has_imu']     = type(kl) is KerasIMU or type(kl) is KerasIMUCategorical
+    opts['imu_inputs']  = kwargs.get('imu_inputs')
+    opts['has_bvh']     = type(kl) is KerasBehavioral
+    opts['val_split']   = 1 - cfg.TRAIN_TEST_SPLIT
+    opts['IMAGE_W']     = cfg.IMAGE_W
+    opts['IMAGE_H']     = cfg.IMAGE_H
     opts['IMAGE_DEPTH'] = cfg.IMAGE_DEPTH
     # dictionary of augmentation operations to perform
-    opts['aug_args']    = kwargs['aug_args']
     opts['categorical'] = type(kl) is KerasCategorical or type(kl) is KerasIMUCategorical
 
     if kwargs.get('aug'):
@@ -366,10 +370,14 @@ def train(cfg, **kwargs):
         opts['continuous'] = False
 
     if 'pkl_cache' in kwargs:
+        # collating the records is expensive. Assuming the same tubs
+        # are going to be used for muliple experiments it saves
+        # significant time to cache the collated records.
         opts['pickle_file'] = kwargs['pkl_cache']
 
     if 'imu_pick' in kwargs:
-        # for choosing only a subset of IMU data
+        # for choosing only a subset of IMU data. Used only for
+        # experiments involving the MPU6050 imu
         opts['imu_pick'] = kwargs['imu_pick']
 
     print('training with model type', type(kl))
@@ -385,7 +393,7 @@ def train(cfg, **kwargs):
     # directly inside 'collage_records'
     # the keys of gen_record are a concat of tub_path + frame#
     # the collate_records call is expensive, so we cache the results in a pickle
-    # file to speed up subsequent experiments.
+    # file to speed up subsequent experiments. pickle file name is in opts dictionary
     gen_records = {}
     collate_records(records, gen_records, opts)
 
@@ -396,6 +404,8 @@ def train(cfg, **kwargs):
     num_train = 0
     num_val   = 0
 
+    # This is needed when using the DataGenerator class. Data must be split into
+    # separate Train and Validation piles.
     for k in gen_records.keys():
         # don't need the original json_data for training, kill it to reduce size a bit
         del gen_records[k]['json_data']
@@ -573,11 +583,15 @@ def train(cfg, **kwargs):
         # N worker threads that can read and/or augment the data faster than the default
         # generator while providing a guarantee that data is not duplicated.
         train_gen = DataGenerator(train_records,opts=opts,batch_size=kwargs['batch_size'])
-
         # when instantiating a Validation Datagenerator set train=False.
         val_gen   = DataGenerator(val_records,  opts=opts,batch_size=kwargs['batch_size'],train=False)
+
         # for whatever reason, this needs to be set to False, otherwise the DataGenerator
         # is incredibly slow. the worker_count will run as threads.
+        # Reason: Python GIL mutli-threading can only hide IO context switches, unlike
+        # other language, compute context switches don't provide any benifit due to the GUI
+        # It seems like the overhead of interprocess communication is too high for the donkeycar
+        # dataset/compute to use pure multiprocessing. (small data files + tiny networks = Compute underruns)
         use_multiprocessing = False
     else:
         # this is for continous training
@@ -637,6 +651,8 @@ def train(cfg, **kwargs):
                     use_multiprocessing=use_multiprocessing,
                     max_queue_size=10
                     )
+    # print ('Len image Cache', len(img_cache))
+    # img_cache.dump_cache('test_img_cache')
 
     print("\n\n----------- Best Eval Loss :%f ---------" % save_best.best)
 

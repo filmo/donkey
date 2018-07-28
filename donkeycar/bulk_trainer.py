@@ -11,19 +11,21 @@ from testing_files.exp3 import e_def as exp_n
 
 # on my set up I have GPUs at ID 0 and 2. This provides an index
 # into 'gpu_ids' list below.
-gpu_idx             = 0
-experiment_date     = '2018-07-21'  # folder into which experiment will be stored
-hist_pkl_name       = 'exp_10-3'    # name for resulting history file of experiment
+gpu_idx             = 1
+experiment_date     = '2018-07-27'  # folder into which experiment will be stored
+hist_pkl_name       = 'exp_3'    # name for resulting history file of experiment
 
 # tubs of data to use
 imu_tubs = ['../d2IMU/data/smoothed_imu/2018-07-08_3n_smooth_run_1',
             '../d2IMU/data/smoothed_imu/2018-07-09_imu_run_2']
 
+tub_names   = ','.join(imu_tubs)
+
 # if augmenting data, which augmentations to perform. Color Balance and Noise are
 # most expensive. clean_percent is the percentage of training data that is not
 # augmented per batch on average. Batch_size = 64, clean_percent 0.10 = ~6.4 samples
 # are not augmented in the batch.
-aug_args = {'vary_color_balance':True,'vary_sharpness':True,'vary_bright':True,
+aug_args = {'vary_color_balance':True,'vary_sharpness':False,'vary_bright':True,
             'vary_contrast':True, 'add_noise':True,'vary_sat':True,
             'clean_percent':0.10}
 
@@ -32,7 +34,7 @@ cfg = dkconfig.load_config(path_for_training_config)
 cfg.MAX_EPOCHS = 30
 
 gpu_ids     = ['gpu-0','gpu-2']
-tub_names   = ','.join(imu_tubs)
+
 
 try:
     os.stat('models')
