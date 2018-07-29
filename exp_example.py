@@ -6,6 +6,7 @@ Set of experiment as control for same image model but no IMU model
 def e_def(tub_name_string):
     # create a easy to access set of keras layers. These just happen to be Dense,
     # but can be any Keras layer
+
     model_funcs = {'dense14': "Dense(14, activation='relu')",
                    'dense7': "Dense(7, activation='relu')",
                    'dense4': "Dense(4, activation='relu')",
@@ -75,5 +76,6 @@ def e_def(tub_name_string):
                      'tubs': tub_name_string,
                      # augmentation will occur based on the aug_args in bulk_trainer.py
                      'aug': True},
+
     ]
     return experiments
