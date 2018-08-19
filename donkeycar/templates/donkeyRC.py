@@ -29,6 +29,7 @@ from donkeycar.parts.datastore import TubHandler, TubGroup
 from donkeycar.parts.controller import LocalWebController, JoystickController
 from donkeycar.parts.RCcontroller import RC_Controller
 from donkeycar.parts.observed_hertz import ObservedHertz
+from donkeycar.parts.cli_monitor import MonitorCLI
 
 from pprint import pprint
 
@@ -220,14 +221,26 @@ def drive(cfg, model_path=None, use_joystick=False, use_rcControl=False,model_ty
 
     # add tub to save data
     inputs = ['cam/image_array', 'user/angle', 'user/throttle', 'user/mode']
-    types = ['image_array', 'float', 'float', 'str']
+    types  = ['image_array', 'float', 'float', 'str']
 
     if cfg.HAVE_IMU:
         # if we're collecting data from the IMU, then save it into the tub as well
-        inputs += ['imu/acl_x', 'imu/acl_y', 'imu/acl_z',
-            'imu/gyr_x', 'imu/gyr_y', 'imu/gyr_z','imu/temp']
+        inputs += [ 'imu/acl_x', 'imu/acl_y', 'imu/acl_z',
+                    'imu/gyr_x', 'imu/gyr_y', 'imu/gyr_z','imu/temp']
 
-        types +=['float', 'float', 'float', 'float', 'float', 'float','float']
+        types +=  ['float', 'float', 'float', 'float', 'float', 'float','float']
+
+
+        last_line = ["acl_x: {0:1.3f}","acl_y: {0:1.3f}","gyr_x: {0:3.2f}",
+                     "acl_y: {0:3.2f}","acl_z: {0:3.2f}","temp: {0:2.1f}",
+                     "angle: {0:2.3f}","throttle: {0:2.3f}"]
+
+        set = {'last_line':last_line}
+
+        cli_input = ['imu/acl_x', 'imu/acl_y', 'imu/gyr_x', 'imu/gyr_y', 'imu/gyr_z','imu/temp','angle','throttle']
+        cli_debug = MonitorCLI(**set)
+        V.add(part=cli_debug,inputs=cli_input,threaded=False)
+
 
     th = TubHandler(path=cfg.DATA_PATH)
     tub = th.new_tub_writer(inputs=inputs, types=types)

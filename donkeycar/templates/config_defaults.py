@@ -34,8 +34,8 @@ CAMERA_FRAMERATE = DRIVE_LOOP_HZ
 
 #STEERING
 STEERING_CHANNEL = 1
-STEERING_LEFT_PWM =  420
-STEERING_RIGHT_PWM = 360
+STEERING_LEFT_PWM =  440 #420
+STEERING_RIGHT_PWM = 390 #360
 
 #THROTTLE
 THROTTLE_CHANNEL = 0
@@ -81,7 +81,7 @@ AUTO_RECORD_ON_THROTTLE = True
 USE_RC_CONTROLLER   = False
 RC_MAX_THROTTLE     = 1.00
 # RC_STEERING_SCALE: +1 or -1 depending on transmitter. On mine I needed -1 to map 'right turn'
-# on controller to 'right turn' on Donky
+# on controller to 'right turn' on DonkeyCar (so that it matches the webcontroller interface
 RC_STEERING_SCALE   = -1
 # these are determined emperically based on your controller and car. Drive your car and run
 # raw_pulse_feed.py. Once you have your steering and throttle trim set on the controller,
