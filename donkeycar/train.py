@@ -134,11 +134,11 @@ def make_next_key(sample, index_offset):
 
 def collate_records(records, gen_records, opts):
     '''
-    Passes in gen_records which is modified by reference. (not a deep copy). As a 
+    Passes in gen_records which is modified by reference. (not a deep copy). As a
     result, it is not retunred
     :param records: list of paths to json records in a tub sorted by frame number
     :param gen_records: declared in calling scope
-    :param opts: 
+    :param opts: dictionary of options passed in
     :return: 
     '''
 
@@ -148,13 +148,19 @@ def collate_records(records, gen_records, opts):
             pickled_records = pickle.load(file)
             list_keys = list(pickled_records.keys())
             for k in list_keys:
+                # # reset the validation/train flags (all data before 2018-07-29 used
+                # # the hardset train/val established when the pickle files was created.
+                if opts.get('reset_split'):
+                    pickled_records[k]['train'] = (random.uniform(0., 1.0) > opts['val_split'])
+
                 gen_records[k] = pickled_records[k]
             print('Returning pickled records')
+            if opts.get('reset_split'):
+                print('Reshuffled training and validation split')
             return
         except:
             file = open(opts['pickle_file'],'wb')
 
-    count = 0
     for record_path in records:
         basepath = os.path.dirname(record_path)
         index = get_record_index(record_path)
@@ -202,12 +208,9 @@ def collate_records(records, gen_records, opts):
 
         sample['angle']     = angle
         sample['throttle']  = throttle
-        # print (sample['angle'],"\n",sample['throttle'])
-        # count+= 1
-        # if count > 50:
-        #     exit()
+
         try:
-            # see if an IMU was used during recording of traning data
+            # see if an IMU was used during recording of training data
             imu_dict = {}
             imu_dict['accl_x'] = float(json_data['imu/acl_x'])
             imu_dict['accl_y'] = float(json_data['imu/acl_y'])
@@ -241,6 +244,7 @@ def collate_records(records, gen_records, opts):
         #now assign test or val
         sample['train'] = (random.uniform(0., 1.0) > opts['val_split'])
         gen_records[key] = sample
+
     if 'pickle_file' in opts:
         pickle.dump(gen_records,file)
 
@@ -373,6 +377,8 @@ def train(cfg, **kwargs):
         # are going to be used for muliple experiments it saves
         # significant time to cache the collated records.
         opts['pickle_file'] = kwargs['pkl_cache']
+
+    opts['reset_split'] = kwargs.get('reset_split')
 
     if 'imu_pick' in kwargs:
         # for choosing only a subset of IMU data. Used only for

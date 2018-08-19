@@ -2,7 +2,7 @@
 Scripts to drive a donkey 2 car and train a model for it.
 
 Usage:
-    manage.py (drive) [--model=<model>] [--js]  [--rc] [--type=(linear|categorical|rnn|imu|behavior|3d)] [--camera=(single|stereo)]
+    manage.py (drive) [--model=<model>] [--js]  [--rc] [--type=(linear|categorical|rnn|imu_lin|imu_cat|behavior|3d)] [--camera=(single|stereo)]
     manage.py (train) [--tub=<tub1,tub2,..tubn>]  (--model=<model>) [--no_cache] \
 		      [--type=(linear|categorical|rnn|imu|behavior|3d)] [--transfer=<tmodel>] [--continuous] [--aug]
 
@@ -136,7 +136,8 @@ def drive(cfg, model_path=None, use_joystick=False, use_rcControl=False,model_ty
     pilot_condition_part = Lambda(pilot_condition)
     V.add(pilot_condition_part, inputs=['user/mode'], outputs=['run_pilot'])
 
-    #IMU
+    #IMU -- even if we're using a model that doesn't incorporate the IMU, we'll still collect
+    # the data.
     if cfg.HAVE_IMU:
         print('IMU present')
         # 6-axis IMU
@@ -155,7 +156,7 @@ def drive(cfg, model_path=None, use_joystick=False, use_rcControl=False,model_ty
                             'imu/temp'], threaded=True)
 
     # now we're going to get ready to setup of the DNN based on wether we have an IMU or not.
-    if model_type == 'imu' or model_type == 'imu_cat':
+    if model_type == 'imu_lin' or model_type == 'imu_cat':
         assert (cfg.HAVE_IMU)
         # Run the pilot if the mode is not user.
         inputs = ['cam/image_array',
@@ -168,9 +169,9 @@ def drive(cfg, model_path=None, use_joystick=False, use_rcControl=False,model_ty
     if model_path:
         # TF and Keras will lazy load if a model is passed in. Otherwise, there's no need to fire
         # up TF just to collect training data.
-
+        kwarg = {'model_type':model_type}
         # the model is initialized to whatever is the current definition in Keras,
-        kl = dk.utils.get_model_by_type(model_type, cfg)
+        kl = dk.utils.get_model_by_type( cfg, **kwarg)
         # however, this load method will overwrite the .model by loading the one found at this
         # path irrespective of whatever was defined above.
         kl.load(model_path)
