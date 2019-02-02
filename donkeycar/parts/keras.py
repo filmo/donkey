@@ -16,8 +16,8 @@ It also 'bins' the throttle rather than leaving it linear as in the original cod
 
 import numpy as np
 
-#import keras
-from tensorflow.python import keras
+import keras
+#from tensorflow.python import keras
 from keras import backend as K
 
 import donkeycar as dk
