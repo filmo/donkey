@@ -231,9 +231,10 @@ def drive(cfg, model_path=None, use_joystick=False, use_rcControl=False,model_ty
         types +=  ['float', 'float', 'float', 'float', 'float', 'float','float']
 
 
-        last_line = ["acl_x: {0: 6.3f}","acl_y: {0: 6.3f}","gyr_x: {0: 6.2f}",
-                     "acl_y: {0: 6.2f}","acl_z: {0: 7.2f}","temp: {0: 4.1f}",
-                     "angle: {0: 5.3f}","throttle: {0: 5.3f}"]
+        last_line = ["acl_x: {0: 2.3f}","acl_y: {0: 2.3f}","gyr_x: {0: 3.2f}",
+                     "acl_y: {0: 3.2f}","acl_z: {0: 3.2f}","temp: {0: 2.1f}",
+                     "angle: {0: 2.3f}","throttle: {0: 2.3f}"]
+
 
         set = {'last_line':last_line}
 
