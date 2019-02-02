@@ -27,7 +27,7 @@ from donkeycar.parts.actuator import PCA9685, PWMSteering, PWMThrottle
 from donkeycar.parts.imu import Mpu6050
 from donkeycar.parts.datastore import TubHandler, TubGroup
 from donkeycar.parts.controller import LocalWebController, JoystickController
-from donkeycar.parts.RCcontroller import RC_Controller
+from donkeycar.parts.RCcontroller import RC_Controller, TwoChannelRC, MultiChannelRC
 from donkeycar.parts.observed_hertz import ObservedHertz
 from donkeycar.parts.cli_monitor import MonitorCLI
 
@@ -56,6 +56,7 @@ def drive(cfg, model_path=None, use_joystick=False, use_rcControl=False,model_ty
     # after the camera part has been added.
     cam = PiCamera(resolution=cfg.CAMERA_RESOLUTION)
     V.add(cam, outputs=['cam/image_array'], threaded=True)
+    using_RC_flag = False
 
     if use_joystick or cfg.USE_JOYSTICK_AS_DEFAULT:
         # modify max_throttle closer to 1.0 to have more power
@@ -84,16 +85,18 @@ def drive(cfg, model_path=None, use_joystick=False, use_rcControl=False,model_ty
                            max_throttle=cfg.RC_MAX_THROTTLE,
                            steering_scale=cfg.RC_STEERING_SCALE,
                            auto_record_on_throttle=cfg.AUTO_RECORD_ON_THROTTLE,
-                           show_cmd=False)
+                           show_cmd=False,
+                           cntr=TwoChannelRC)
 
         # the RC_Controller takes no inputs from other parts. It uses a serial connection to the
         # microcontroller (Teensy) to receive inputs directly from the MCU.
         V.add(rc,
               # outputs angle and throttle, user/mode is controlled by web interface.
               # the RC part has to be set to 'recording' in order for record_on_throttle to work.
-              outputs=['user/angle', 'user/throttle', 'void/mode', 'recording'],
+              outputs=rc.outputs,
               threaded=True)
 
+        using_RC_flag = True
         '''
         TODO: I'm pretty sure this is not the correct way to gain access to the web interface
         but its what I managed to do to get it sort of working. Seems like two or more parts
@@ -222,6 +225,13 @@ def drive(cfg, model_path=None, use_joystick=False, use_rcControl=False,model_ty
     # add tub to save data
     inputs = ['cam/image_array', 'user/angle', 'user/throttle', 'user/mode']
     types  = ['image_array', 'float', 'float', 'str']
+
+    if using_RC_flag:
+        if rc.rc_controller.num_channels > 2:
+            # record the additional outputs from the RC controller.
+            # in the case of the 5-channel version it's amps,volts,watts
+            inputs += rc.outputs[2:rc.rc_controller.num_channels]
+            types  += rc.output_types[2:rc.rc_controller.num_channels]
 
     if cfg.HAVE_IMU:
         # if we're collecting data from the IMU, then save it into the tub as well

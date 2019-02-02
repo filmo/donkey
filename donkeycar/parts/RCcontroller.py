@@ -44,6 +44,161 @@ from threading import Thread
 
 # import for syntactical ease
 from donkeycar.parts.web_controller.web import LocalWebController
+class MultiChannelRC():
+    '''
+    Define a 5 channel receiver.
+
+    This is specific to Phil Glau's build. Throttle, Steering, milliAmps, milliVolts, watts
+
+    This was written for Teensy 3.2 but could work on Arduino Uno. You will need to correctly ID the device as different
+    Arduino show up in /dev/ with different names.
+
+    Arduino Uno, Due, Teensy:   /dev/ttyACM0
+    Arduino Duemilanove:        /dev/ttyUSB0
+    '''
+
+    def __init__(self,
+                    dev_fn,
+                    cfg,
+                    # deadband needs to be at least high enough to prevent 'auto-record' from
+                    # triggering on spurious signals. In reality my car doesn't even begin to move
+                    # until it's gone over 0.70 and the slowest it will move is around 0.57
+                    deadband=15,
+                    tolerance=100):
+        self.dev_fn = dev_fn    # right now '/dev/ttyUSB0' corresponds with to Arduino Deminulova
+        self.serial_fd = None
+        self.low = cfg.RC_LOW   # set in the config file. Each car will be a bit different.
+        self.high = cfg.RC_HIGH
+        self.center = cfg.RC_CENTER
+        self.deadband = deadband
+        self.tolerance = tolerance
+        self.num_channels = 5
+        # used in mapIn to only map the throttle and steering to -1+1 floats.
+        self.num_pulse_channels = 2
+        self.outputs        = ['user/angle', 'user/throttle', 'car/amps','car/volts','car/watts','void/mode', 'recording']
+        self.output_types   = ['float','float','int','int','float','str','bool']
+
+    def init(self):
+        print('5 Channel RC: Opening Microcontroller via Serial: %s...' % self.dev_fn, )
+        try:
+            self.serial_fd = serial.Serial(self.dev_fn, 57600)
+            self.serial_fd.isOpen()
+            print('5 Channel RC: Microcontroller opened!')
+        except IOError:
+            self.serial_fd.close()
+            self.serial_fd.open()
+            print('5 Channel RC: port was already open. Closed and reopened')
+        return [0 for x in range(self.num_channels)]
+
+    def getLatestStatus(self):
+        ''' This clears the buffer and returns only the last value
+
+            This is faster than polling the arduino for the latest value. Thus the arduino just stuffs values
+            into the serial buffer as fast as it's set to and then this will disregard all except the most
+            recent value.
+
+            ### pretty 'hacky' ###
+        '''
+        status = b''  # an empty byte string
+        if (not self.serial_fd.isOpen()):
+            print("5 Channel RC: **** Serial Port is not open anymore !! ****")
+            time.sleep(5)
+
+        while self.serial_fd.inWaiting() > 0:
+            # read and discard any values except the most recent.
+            # when Arduino Hz = 2x python Hz this results in 1 to 2
+            # discarded results. Because the Arduino is sending data with a '\n' at the
+            # end of each transmision, each 'line' in the serial buffer corresponds to a
+            # single data point. The most recent one is the last one in the buffer.
+            status = self.serial_fd.readline()
+
+        # raw format = b'1234 1234\r\n' from the Arduino
+        # and needs to be decoded and split into an array.
+        try:
+            vel_angle_raw = status.strip().decode("utf-8").split(" ")
+        except Exception:
+            # unable to decode the values from the Arduino. Typically happens
+            # at startup when the serial connection is being started and lasts
+            # a few cycles. Junk in the trunk..
+            vel_angle_raw = ['0' for x in range(self.num_channels)]
+
+            # map the string values to integers.
+        if len(vel_angle_raw) == self.num_channels:
+            # this used to be int, but needs to be float because watts is a float from the Teensy.
+            # could convert watts to milliWatts and return from Teensy as int if it turns out that
+            # int is needed.
+            return list(map(float, vel_angle_raw))
+        else:
+            return [0 for x in range(self.num_channels)]
+
+    def mapIn(self, usValue_ary):
+        '''
+        Takes a tuple of int values representing usPulses per channel and
+        converts it to a float range between -1 and +1 per channel
+
+        :param usValue_ary: an array of INTs [1360,1350] for example representing [throttle,steering]
+        :return: an array of floats like [-0.23, 0.75]
+        '''
+        return_value = [0 for x in range(self.num_pulse_channels)]
+        for i in range(self.num_pulse_channels):
+            value = usValue_ary[i]
+            if (value < self.low[i]):
+                # the value is less than the low value.
+                if (value < (self.low[i] - self.tolerance)):
+                    # when initially starting up, the arduino will send '0's, so
+                    # the first N sample are below the low tolerance.
+
+                    # the value is below even the tolerance value
+                    # return 0 as NOP
+                    return_value[i] = 0
+                    continue
+                # else return the thresholded lower value
+                value = self.low[i]
+
+            if (value > self.high[i]):
+                # likewise, if the value is higher than the defined high, check to see
+                # if it is within a tolerance
+                if (value > (self.high[i] + self.tolerance)):
+                    return_value[i] = 0
+                    continue
+                # otherwise return the thresholded high value
+                value = self.high[i]
+
+            # now our pulses are constrained to a range defined by the per channel HIGH and LOW usPulse values
+            # Lets convert them to a -1 to + 1 range compatible with DonkeyCar
+            lowDeadBand = self.center[i] - self.deadband
+            highDeadBand = self.center[i] + self.deadband
+
+            if (value < lowDeadBand):
+                # convert to a value between -1 and 0
+                return_value[i] = (value - lowDeadBand) / float(lowDeadBand - self.low[i])
+            elif (value > highDeadBand):
+                # convert to a vlaue between 0 and +1
+                return_value[i] = (value - highDeadBand) / float(self.high[i] - highDeadBand)
+            else:
+                # else we're in the deadband, just return 0
+                return_value[i] = 0
+        # return the tuple of converted values.
+        return return_value
+
+    def poll(self):
+        '''
+        Read the serial buffer and converts the values to an array of floats
+        :return:
+        '''
+        raw_data_ary = self.getLatestStatus()
+
+        # set some fail-safe values in case nothing is returned.
+        float_commands = [0.0 for x in range(self.num_channels)]
+        if len(raw_data_ary) == self.num_channels:
+            # if there are n values, convert the INT usPulses to Float values
+            # only convert the first two ints to [-1 +1] for steering and throttle.
+            # index 3,4,5 are milliAmps, milliVolts and Watts respectively
+            float_commands = self.mapIn(raw_data_ary[:self.num_pulse_channels])
+
+        # add the amps,volts,watts to the return values.
+        float_commands += raw_data_ary[self.num_channels:]
+        return float_commands
 
 class TwoChannelRC():
     '''
@@ -81,6 +236,8 @@ class TwoChannelRC():
         self.deadband = deadband
         self.tolerance = tolerance
         self.num_channels = 2
+        self.outputs        = ['user/angle', 'user/throttle', 'void/mode', 'recording']
+        self.output_types   = ['float','float','str','bool']
 
     def init(self):
         print('TwoChannelRC: Opening Microcontroller via Serial: %s...' % self.dev_fn, )
@@ -92,6 +249,7 @@ class TwoChannelRC():
             self.serial_fd.close()
             self.serial_fd.open()
             print('TwoChannelRC: port was already open. Closed and reopened')
+        return [0 for x in range(self.num_channels)]
 
     def getLatestStatus(self):
         ''' This clears the buffer and returns only the last value
@@ -215,7 +373,8 @@ class RC_Controller(object):
                  throttle_scale=1.0,
                  dev_fn='/dev/ttyACM0',
                  auto_record_on_throttle=True,
-                 show_cmd=False
+                 show_cmd=False,
+                 cntr = TwoChannelRC
                  ):
 
         self.angle = 0.0
@@ -233,9 +392,13 @@ class RC_Controller(object):
         self.delay_stop = 5
         self.delay_stop_count = 0
         self.dev_fn = dev_fn
+        self.ctrl_class = cntr
         self.rc_controller = None
         self.show_commands = show_cmd
         self.cfg = cfg  # reference to the configuration variables. This is where the RC channels are defined.
+        self.return_values = None
+        self.outputs = None
+        self.output_types = None
 
     def on_throttle_changes(self):
         '''
@@ -276,9 +439,12 @@ class RC_Controller(object):
         '''
         attempt to init rc controller
         '''
+        print('**** inside RCcontroller init_rc *****')
         try:
-            self.rc_controller = TwoChannelRC(self.dev_fn,cfg=self.cfg)
-            self.rc_controller.init()
+            self.rc_controller      = self.ctrl_class(self.dev_fn,cfg=self.cfg)
+            self.return_values      = self.rc_controller.init()
+            self.outputs            = self.rc_controller.outputs
+            self.output_types       = self.rc_controller.output_types
         except FileNotFoundError:
             print(self.dev_fn, "RC Controller: microcontroller not found.")
             self.rc_controller = None
@@ -305,6 +471,12 @@ class RC_Controller(object):
             # set throttle_scale to + or - 1 as needed.
             self.throttle = (self.throttle_scale * throttle * self.max_throttle)
 
+            # set the first 2 values of self.return_values to throttle and steering
+            # and remainder to any left over values
+            self.return_values[self.cfg.THROTTLE_CHANNEL] = self.throttle
+            self.return_values[self.cfg.STEERING_CHANNEL] = self.angle
+            self.return_values[2:] = normalized_values_ary[2:]
+
             if self.show_commands:
                 print('RC controller: throttle', self.throttle, "angle", self.angle)
 
@@ -317,7 +489,8 @@ class RC_Controller(object):
 
     def run_threaded(self, img_arr=None):
         self.img_arr = img_arr
-        return self.angle, self.throttle, self.mode, self.recording
+
+        return self.return_values + [self.mode, self.recording]
 
     def run(self, img_arr=None):
         raise Exception("We expect for this part to be run with the threaded=True argument.")
