@@ -32,7 +32,7 @@ totally different experiements. ?? Up to you to figure out how to rework this.. 
 '''
 
 # from testing_files.exp_13_aug import e_def as exp_n
-from testing_files.exp13b import e_def as exp_n
+from testing_files.training_experiments.exp13b import e_def as exp_n
 
 # from testing_files.exp8 import e_def as exp_n
 # from testing_files.exp9 import e_def as exp_n

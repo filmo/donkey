@@ -3,12 +3,8 @@ from pprint import pprint
 import numpy as np
 import os
 import glob
-import fnmatch
-
 
 exp_defs = []
-from testing_files.exp6 import e_def as exp_6
-from testing_files.exp7 import e_def as exp_7
 # from testing_files.exp_13_aug import e_def as exp_n
 # exp_defs.append(exp_n([]))
 # from testing_files.exp_13a import e_def as exp_n
@@ -17,11 +13,11 @@ from testing_files.exp7 import e_def as exp_7
 # exp_defs.append(exp_n([]))
 # from testing_files.exp14 import e_def as exp_n
 # exp_defs.append(exp_n([]))
-from testing_files.exp16_shuf import e_def as exp_n
+from testing_files.training_experiments.exp16_shuf import e_def as exp_n
 exp_defs.append(exp_n([]))
-from testing_files.exp17b import e_def as exp_n
+from testing_files.training_experiments.exp17b import e_def as exp_n
 exp_defs.append(exp_n([]))
-from testing_files.exp17 import e_def as exp_n
+from testing_files.training_experiments.exp17 import e_def as exp_n
 exp_defs.append(exp_n([]))
 
 

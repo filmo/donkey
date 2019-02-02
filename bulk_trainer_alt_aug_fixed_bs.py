@@ -3,7 +3,6 @@ import donkeycar.config as dkconfig
 import os
 import numpy as np
 import pickle
-from pprint import pprint
 from time import time
 '''
 This is a bulk trainer that allows me to run multiple training sessions
@@ -13,7 +12,7 @@ use. I'm running two GTX-1070 GPUs on a 6-core i7 Ubuntu 16.04
 This is for fixed batch size and alternative Augmentation
 '''
 
-from testing_files.exp17b import e_def as exp_n
+from testing_files.training_experiments.exp17b import e_def as exp_n
 
 
 
