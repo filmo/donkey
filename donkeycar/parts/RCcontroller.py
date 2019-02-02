@@ -399,6 +399,7 @@ class RC_Controller(object):
         self.return_values = None
         self.outputs = None
         self.output_types = None
+        self.num_channels = None
 
     def on_throttle_changes(self):
         '''
@@ -445,6 +446,7 @@ class RC_Controller(object):
             self.return_values      = self.rc_controller.init()
             self.outputs            = self.rc_controller.outputs
             self.output_types       = self.rc_controller.output_types
+            self.num_channels       = self.rc_controller.num_channels
         except FileNotFoundError:
             print(self.dev_fn, "RC Controller: microcontroller not found.")
             self.rc_controller = None

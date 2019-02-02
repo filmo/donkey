@@ -57,6 +57,7 @@ def drive(cfg, model_path=None, use_joystick=False, use_rcControl=False,model_ty
     cam = PiCamera(resolution=cfg.CAMERA_RESOLUTION)
     V.add(cam, outputs=['cam/image_array'], threaded=True)
     using_RC_flag = False
+    ctr = None
 
     if use_joystick or cfg.USE_JOYSTICK_AS_DEFAULT:
         # modify max_throttle closer to 1.0 to have more power
@@ -81,7 +82,7 @@ def drive(cfg, model_path=None, use_joystick=False, use_rcControl=False,model_ty
         # modify max_throttle closer to 1.0 to have more power
         # modify steering_scale lower than 1.0 to have less responsive steering
         # 2018-01-01 very 'alpha' stage.
-        rc = RC_Controller(cfg=cfg,
+        ctr = RC_Controller(cfg=cfg,
                            max_throttle=cfg.RC_MAX_THROTTLE,
                            steering_scale=cfg.RC_STEERING_SCALE,
                            auto_record_on_throttle=cfg.AUTO_RECORD_ON_THROTTLE,
@@ -90,7 +91,7 @@ def drive(cfg, model_path=None, use_joystick=False, use_rcControl=False,model_ty
 
         # the RC_Controller takes no inputs from other parts. It uses a serial connection to the
         # microcontroller (Teensy) to receive inputs directly from the MCU.
-        V.add(rc,
+        V.add(ctr,
               # outputs angle and throttle, user/mode is controlled by web interface.
               # the RC part has to be set to 'recording' in order for record_on_throttle to work.
               outputs=rc.outputs,
@@ -107,8 +108,8 @@ def drive(cfg, model_path=None, use_joystick=False, use_rcControl=False,model_ty
         keyboard input for many of the things that a 2-channel RC controller doesn't allow for while at
         the same time using the RC Transmitter/Receiver to provide the throttle & angle input.
         '''
-        ctr = LocalWebController()
-        V.add(ctr,
+        w_ctr = LocalWebController()
+        V.add(w_ctr,
               inputs=['cam/image_array'],
               # the output for angle and throttle go into the void, but
               # recording has to be set to 'recording1' so that it doesn't override
@@ -227,11 +228,11 @@ def drive(cfg, model_path=None, use_joystick=False, use_rcControl=False,model_ty
     types  = ['image_array', 'float', 'float', 'str']
 
     if using_RC_flag:
-        if rc.rc_controller.num_channels > 2:
+        if ctr.num_channels > 2:
             # record the additional outputs from the RC controller.
             # in the case of the 5-channel version it's amps,volts,watts
-            inputs += rc.outputs[2:rc.rc_controller.num_channels]
-            types  += rc.output_types[2:rc.rc_controller.num_channels]
+            inputs += ctr.outputs[2:ctr.num_channels]
+            types  += ctr.output_types[2:ctr.num_channels]
 
     if cfg.HAVE_IMU:
         # if we're collecting data from the IMU, then save it into the tub as well
