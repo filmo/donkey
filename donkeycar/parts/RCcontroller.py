@@ -197,7 +197,7 @@ class MultiChannelRC():
             float_commands = self.mapIn(raw_data_ary[:self.num_pulse_channels])
 
         # add the amps,volts,watts to the return values.
-        float_commands += raw_data_ary[self.num_channels:]
+        float_commands += raw_data_ary[self.num_pulse_channels:]
         return float_commands
 
 class TwoChannelRC():
@@ -400,6 +400,9 @@ class RC_Controller(object):
         self.outputs = None
         self.output_types = None
         self.num_channels = None
+        # perform initiaization right away so that manage.py can access the number of channels
+        # and ouput information
+        self.init_rc()
 
     def on_throttle_changes(self):
         '''
@@ -441,15 +444,16 @@ class RC_Controller(object):
         attempt to init rc controller
         '''
         print('**** inside RCcontroller init_rc *****')
-        try:
-            self.rc_controller      = self.ctrl_class(self.dev_fn,cfg=self.cfg)
-            self.return_values      = self.rc_controller.init()
-            self.outputs            = self.rc_controller.outputs
-            self.output_types       = self.rc_controller.output_types
-            self.num_channels       = self.rc_controller.num_channels
-        except FileNotFoundError:
-            print(self.dev_fn, "RC Controller: microcontroller not found.")
-            self.rc_controller = None
+        if self.rc_controller is None:
+            try:
+                self.rc_controller      = self.ctrl_class(self.dev_fn,cfg=self.cfg)
+                self.return_values      = self.rc_controller.init()
+                self.outputs            = self.rc_controller.outputs
+                self.output_types       = self.rc_controller.output_types
+                self.num_channels       = self.rc_controller.num_channels
+            except FileNotFoundError:
+                print(self.dev_fn, "RC Controller: microcontroller not found.")
+                self.rc_controller = None
         return self.rc_controller is not None
 
     def update(self):
