@@ -244,17 +244,17 @@ def drive(cfg, model_path=None, use_joystick=False, use_rcControl=False,model_ty
         types +=  ['float', 'float', 'float', 'float', 'float', 'float','float']
 
 
-        last_line = ["acl_x: {0: 2.3f}","acl_y: {0: 2.3f}","gyr_x: {0: 3.2f}",
-                     "acl_y: {0: 3.2f}","acl_z: {0: 3.2f}","temp: {0: 2.1f}",
-                     "angle: {0: 2.3f}","throttle: {0: 2.3f}"]
+        last_line = ["acl_x: {0: 4.3f}","acl_y: {0: 4.3f}","gyr_x: {0: 4.2f}",
+                     "acl_y: {0: 4.2f}","acl_z: {0: 4.2f}","temp: {0: 4.1f}",
+                     "angle: {0: 4.3f}","throttle: {0: 4.3f}"]
 
         cli_input = ['imu/acl_x', 'imu/acl_y', 'imu/gyr_x', 'imu/gyr_y',
                      'imu/gyr_z','imu/temp','angle','throttle']
 
         if using_RC_flag:
             if ctr.num_channels > 2:
-                cli_input += ['car/amps']
-                last_line += ["amps: {0: 4.0f}"]
+                cli_input += ['car/amps','car/volts']
+                last_line += ["amps: {0: 4.0f}","volts: {0: 4.0f}"]
 
         set = {'last_line':last_line}
 

@@ -25,7 +25,8 @@ DRIVE_LOOP_HZ = 20
 MAX_LOOPS = 100000
 
 #CAMERA
-CAMERA_RESOLUTION = (120, 160) #(height, width)
+#CAMERA_RESOLUTION = (128, 160) #(height, width)
+CAMERA_RESOLUTION = (240, 320)
 CAMERA_TYPE = "PICAM"   # (PICAM|WEBCAM|CVCAM)
 IMAGE_W = 160
 IMAGE_H = 120
@@ -35,7 +36,7 @@ CAMERA_FRAMERATE = DRIVE_LOOP_HZ
 #STEERING
 STEERING_CHANNEL = 1
 STEERING_LEFT_PWM =  440 #420
-STEERING_RIGHT_PWM = 390 #360
+STEERING_RIGHT_PWM = 290 #360
 
 #THROTTLE
 THROTTLE_CHANNEL = 0
@@ -78,7 +79,7 @@ NETWORK_JS_SERVER_IP = "192.168.0.1"
 AUTO_RECORD_ON_THROTTLE = True
 
 #RC Controller (2-channel stock controller for now) - alpha!! 2018-01-02
-USE_RC_CONTROLLER   = False
+USE_RC_CONTROLLER   = True
 RC_MAX_THROTTLE     = 1.00
 # RC_STEERING_SCALE: +1 or -1 depending on transmitter. On mine I needed -1 to map 'right turn'
 # on controller to 'right turn' on DonkeyCar (so that it matches the webcontroller interface
@@ -92,7 +93,7 @@ RC_STEERING_SCALE   = -1
 # steering angle = 0, RC_TOLERANCE allows over HIGH and under LOW values to be clampped to LOW or HIGH
 # without throwing an error.
 RC_CENTER = [1400,1350]
-RC_LOW    = [800, 850]
+RC_LOW    = [850, 850]
 RC_HIGH   = [1950,1930]
 RC_DEAD   = 15
 RC_TOLERANCE = 100

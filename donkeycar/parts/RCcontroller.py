@@ -236,6 +236,7 @@ class TwoChannelRC():
         self.deadband = deadband
         self.tolerance = tolerance
         self.num_channels = 2
+        self.num_pulse_channels = 2
         self.outputs        = ['user/angle', 'user/throttle', 'void/mode', 'recording']
         self.output_types   = ['float','float','str','bool']
 
