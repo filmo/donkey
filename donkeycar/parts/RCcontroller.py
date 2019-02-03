@@ -75,7 +75,8 @@ class MultiChannelRC():
         self.num_channels = 5
         # used in mapIn to only map the throttle and steering to -1+1 floats.
         self.num_pulse_channels = 2
-        self.outputs        = ['user/angle', 'user/throttle', 'car/amps','car/volts','car/watts','void/mode', 'recording']
+        # ordering is important on outputs and output_types!!
+        self.outputs        = ['user/throttle','user/angle', 'car/amps','car/volts','car/watts','void/mode', 'recording']
         self.output_types   = ['float','float','int','int','float','str','bool']
 
     def init(self):
@@ -237,7 +238,8 @@ class TwoChannelRC():
         self.tolerance = tolerance
         self.num_channels = 2
         self.num_pulse_channels = 2
-        self.outputs        = ['user/angle', 'user/throttle', 'void/mode', 'recording']
+        # ordering is important on outputs and output_types!!
+        self.outputs        = [ 'user/throttle', 'user/angle','void/mode', 'recording']
         self.output_types   = ['float','float','str','bool']
 
     def init(self):
